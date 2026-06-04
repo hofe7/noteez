@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../date_util.dart';
 import '../main_controller.dart';
 import '../models/sticky.dart';
 import '../sticky_palette.dart';
@@ -33,20 +34,105 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   final TextEditingController _q = TextEditingController();
   late final FocusNode _focus = FocusNode(onKeyEvent: _onFieldKey);
   String _query = '';
-  List<Sticky> _results = const [];
+  List<Sticky> _results = const []; // 평면: 정확 일치 + 관련 (키보드 nav/패널용)
+  int _exactCount = 0; // _results 중 앞쪽 '정확 일치' 개수 (나머지는 'AI 관련')
+  final DateTime _now = DateTime.now();
   Timer? _debounce;
   bool _capture = false; // 캡처 모드 vs 검색 모드
+  int _selected = 0; // 검색 결과 키보드 선택 인덱스
+  final ScrollController _scroll = ScrollController();
+  bool _split = false; // 관련 표시 방식: false=컴팩트(하단), true=분할(우측 패널)
+  List<List<Map<String, dynamic>>> _clusters = const []; // 빈 검색=둘러보기
+  String? _panelId; // 관련 패널이 보여줄 대상 메모 id (선택/hover 따라감)
+
+  static const double _rowExtent = 46; // 결과 행 고정 높이(스크롤 계산용)
+  static const Size _compactSize = Size(596, 484);
+  static const Size _splitSize = Size(880, 484);
+
+  bool get _browsing => !_capture && _query.trim().isEmpty;
+  Sticky? get _selectedSticky =>
+      (!_capture && _results.isNotEmpty && _selected < _results.length)
+          ? _results[_selected]
+          : null;
+
+  // 시그니처 액센트 = 따뜻한 허니 앰버 (포스트잇 파스텔과 한 식구).
+  static const Color _accent = Color(0xFFE8A33D);
+  static const Color _panel = Color(0xFFFFFDF8); // 검색: 순백 대신 살짝 따뜻한 오프화이트
+  static const Color _paper = Color(0xFFFFEFAE); // 캡처: 포스트잇 종이색(=메모 쓰는 느낌)
+  static const Color _inkOnPaper = Color(0xFF6E561B); // 종이 위 캐럿/아이콘(따뜻한 잉크)
+
+  // 결과 목록에서 "새 메모" 행을 포함한 전체 선택 가능 항목 수.
+  // 쿼리가 있으면 맨 끝에 "'쿼리'로 새 메모" 행이 하나 더 붙는다.
+  bool get _hasCreateRow => _query.trim().isNotEmpty;
+  int get _itemCount => _results.length + (_hasCreateRow ? 1 : 0);
+  bool get _onCreateRow => _hasCreateRow && _selected == _results.length;
 
   // 캡처 모드: Enter=저장, Shift+Enter=줄바꿈.
+  // 검색 모드: ↑↓=결과 이동, Enter=선택 항목 열기(또는 새 메모).
   KeyEventResult _onFieldKey(FocusNode node, KeyEvent e) {
-    if (_capture &&
-        e is KeyDownEvent &&
-        e.logicalKey == LogicalKeyboardKey.enter &&
-        !HardwareKeyboard.instance.isShiftPressed) {
-      _commit();
+    if (e is! KeyDownEvent) return KeyEventResult.ignored;
+    if (_capture) {
+      if (e.logicalKey == LogicalKeyboardKey.enter &&
+          !HardwareKeyboard.instance.isShiftPressed) {
+        _commit();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+    // 검색 모드 — 둘러보기(빈 검색)는 마우스로 탐색.
+    if (_browsing) return KeyEventResult.ignored;
+    if (e.logicalKey == LogicalKeyboardKey.arrowDown) {
+      _move(1);
+      return KeyEventResult.handled;
+    }
+    if (e.logicalKey == LogicalKeyboardKey.arrowUp) {
+      _move(-1);
+      return KeyEventResult.handled;
+    }
+    if (e.logicalKey == LogicalKeyboardKey.enter) {
+      _activateSelected();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
+  }
+
+  void _move(int delta) {
+    if (_itemCount == 0) return;
+    setState(() {
+      _selected = (_selected + delta).clamp(0, _itemCount - 1);
+      _panelId =
+          _selected < _results.length ? _results[_selected].id : null;
+    });
+    _ensureVisible();
+  }
+
+  // 선택된 항목 실행: 결과면 그 메모 열기, "새 메모" 행이면 캡처처럼 생성.
+  void _activateSelected() {
+    if (_onCreateRow) {
+      _createFromQuery();
+    } else if (_results.isNotEmpty && _selected < _results.length) {
+      _open(_results[_selected]);
+    }
+  }
+
+  Future<void> _createFromQuery() async {
+    final t = _query.trim();
+    await _hide();
+    if (t.isNotEmpty) await mainController.addStickyWithText(t);
+  }
+
+  void _ensureVisible() {
+    if (!_scroll.hasClients) return;
+    final target = _selected * _rowExtent;
+    final vp = _scroll.position.viewportDimension;
+    final cur = _scroll.offset;
+    if (target < cur) {
+      _scroll.animateTo(target,
+          duration: const Duration(milliseconds: 120), curve: Curves.easeOut);
+    } else if (target + _rowExtent > cur + vp) {
+      _scroll.animateTo(target + _rowExtent - vp,
+          duration: const Duration(milliseconds: 120), curve: Curves.easeOut);
+    }
   }
 
   @override
@@ -61,9 +147,26 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   void _onOpen() {
     _q.clear();
     _query = '';
-    setState(() => _capture = false);
+    _clusters = mainController.clusters(); // 둘러보기용 묶음 스냅샷
+    _panelId = null;
+    setState(() {
+      _capture = false;
+      _selected = 0;
+    });
+    _applyWindowSize();
     _runSearch();
     WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
+  }
+
+  Future<void> _applyWindowSize() async {
+    final s = _split ? _splitSize : _compactSize;
+    await windowManager.setSize(s);
+    await windowManager.center();
+  }
+
+  void _toggleSplit() {
+    setState(() => _split = !_split);
+    _applyWindowSize();
   }
 
   // ⌘⇧Space: 빠른 캡처 모드로 열기.
@@ -90,7 +193,12 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   Future<void> _runSearch() async {
     final r = await mainController.search(_query);
     if (!mounted) return;
-    setState(() => _results = r);
+    setState(() {
+      _results = [...r.exact, ...r.related];
+      _exactCount = r.exact.length;
+      _selected = 0; // 새 결과 → 맨 위 선택
+      _panelId = _results.isNotEmpty ? _results.first.id : null;
+    });
   }
 
   @override
@@ -115,6 +223,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
     _debounce?.cancel();
     _q.dispose();
     _focus.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -133,13 +242,18 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
           return KeyEventResult.ignored;
         },
         child: Container(
-          margin: const EdgeInsets.all(8),
+          margin: const EdgeInsets.fromLTRB(16, 14, 16, 20),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: _capture ? _paper : _panel,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+                color: _capture ? const Color(0x14000000) : const Color(0x0F000000)),
             boxShadow: const [
+              // 2겹: 넓고 옅은 앰비언트 + 가까운 또렷한 그림자 → 떠 있는 느낌.
               BoxShadow(
-                  color: Color(0x1F000000), blurRadius: 20, offset: Offset(0, 6)),
+                  color: Color(0x1A000000), blurRadius: 28, offset: Offset(0, 12)),
+              BoxShadow(
+                  color: Color(0x10000000), blurRadius: 6, offset: Offset(0, 2)),
             ],
           ),
           clipBehavior: Clip.antiAlias,
@@ -153,8 +267,10 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Icon(
-                            _capture ? Icons.edit_outlined : Icons.search,
-                            color: Colors.black45,
+                            _capture
+                                ? Icons.sticky_note_2_outlined
+                                : Icons.search,
+                            color: _capture ? _inkOnPaper : Colors.black38,
                             size: 22),
                       ),
                       const SizedBox(width: 10),
@@ -168,10 +284,21 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
                           keyboardType: _capture
                               ? TextInputType.multiline
                               : TextInputType.text,
-                          style: const TextStyle(fontSize: 18, height: 1.3),
+                          style: const TextStyle(
+                              fontSize: 16,
+                              height: 1.3,
+                              fontWeight: FontWeight.w500),
+                          cursorColor: _capture ? _inkOnPaper : _accent,
+                          cursorWidth: 2,
+                          cursorRadius: const Radius.circular(1),
                           decoration: InputDecoration(
                             border: InputBorder.none,
-                            hintText: _capture ? '메모 적기…' : '메모 검색…',
+                            hintText: _capture ? '여기에 메모…' : '메모 검색…',
+                            hintStyle: TextStyle(
+                                color: _capture
+                                    ? _inkOnPaper.withValues(alpha: 0.45)
+                                    : Colors.black26,
+                                fontWeight: FontWeight.w400),
                             isDense: true,
                           ),
                           onChanged: (v) {
@@ -182,27 +309,50 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
                     ],
                   ),
                 ),
-                if (_capture)
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(18, 0, 16, 12),
+                if (_capture) ...[
+                  const Spacer(), // 힌트를 종이 바닥에 고정(스티커 푸터처럼)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(18, 8, 16, 14),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(
+                            color: _inkOnPaper.withValues(alpha: 0.12)),
+                      ),
+                    ),
                     child: Text(
                       '↵ 저장    ⇧↵ 줄바꿈    esc 취소',
-                      style: TextStyle(fontSize: 11, color: Colors.black38),
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: _inkOnPaper.withValues(alpha: 0.55)),
                     ),
-                  )
-                else ...[
-                  const Divider(height: 1),
-                  Expanded(
-                    child: results.isEmpty
-                        ? const Center(
-                            child: Text('결과 없음',
-                                style: TextStyle(color: Colors.black38)))
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            itemCount: results.length,
-                            itemBuilder: (_, i) => _resultTile(results[i]),
-                          ),
                   ),
+                ] else ...[
+                  if (_browsing) _dateChips(),
+                  const Divider(
+                      height: 1,
+                      thickness: 1,
+                      indent: 18,
+                      endIndent: 16,
+                      color: Color(0x0D000000)),
+                  Expanded(
+                    child: _split
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(flex: 5, child: _mainList(results)),
+                              const VerticalDivider(
+                                  width: 1,
+                                  thickness: 1,
+                                  color: Color(0x0D000000)),
+                              Expanded(flex: 4, child: _relatedPanel()),
+                            ],
+                          )
+                        : _mainList(results),
+                  ),
+                  if (!_split && !_browsing && _relatedItems().isNotEmpty)
+                    _relatedInline(),
+                  _footerHint(),
                 ],
             ],
           ),
@@ -211,42 +361,528 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
     );
   }
 
-  Widget _resultTile(Sticky s) {
+  Widget _resultTile(Sticky s, int i) {
     final openTodos =
         s.blocks.whereType<TodoBlock>().where((t) => !t.checked).length;
-    return InkWell(
+    return _row(
+      selected: _selected == i,
       onTap: () => _open(s),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      onHover: () => _selectByHover(i),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: StickyPalette.of(s.colorIndex),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: const Color(0x14000000)),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _previewText(s, i < _exactCount),
+                const SizedBox(height: 2),
+                Text(
+                  relativeDate(s.createdAt, _now),
+                  style: const TextStyle(fontSize: 10.5, color: Colors.black38),
+                ),
+              ],
+            ),
+          ),
+          if (openTodos > 0) _todoBadge(openTodos),
+        ],
+      ),
+    );
+  }
+
+  // 미리보기 텍스트. 정확 일치면 검색어를 앰버로 강조.
+  Widget _previewText(Sticky s, bool exact) {
+    const base = TextStyle(
+        fontSize: 14, color: Colors.black87, fontWeight: FontWeight.w400);
+    final preview = s.preview;
+    final lq = _query.trim().toLowerCase();
+    final idx = (exact && lq.isNotEmpty) ? preview.toLowerCase().indexOf(lq) : -1;
+    if (idx < 0) {
+      return Text(preview,
+          maxLines: 1, overflow: TextOverflow.ellipsis, style: base);
+    }
+    return Text.rich(
+      TextSpan(style: base, children: [
+        TextSpan(text: preview.substring(0, idx)),
+        TextSpan(
+            text: preview.substring(idx, idx + lq.length),
+            // 은은한 형광펜: 쨍한 색 대신 옅은 앰버 배경.
+            style: TextStyle(
+                backgroundColor: _accent.withValues(alpha: 0.16),
+                color: Colors.black87)),
+        TextSpan(text: preview.substring(idx + lq.length)),
+      ]),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  // "할 일 N" 작은 알약 배지.
+  Widget _todoBadge(int n) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0x0A000000),
+          borderRadius: BorderRadius.circular(20),
+        ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: StickyPalette.of(s.colorIndex),
-                borderRadius: BorderRadius.circular(3),
-                border: Border.all(color: Colors.black12),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                s.preview,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 15),
-              ),
-            ),
-            if (openTodos > 0)
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Text('할 일 $openTodos',
-                    style:
-                        const TextStyle(fontSize: 12, color: Colors.black38)),
-              ),
+            const Icon(Icons.checklist_rounded,
+                size: 13, color: Colors.black38),
+            const SizedBox(width: 4),
+            Text('$n',
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.black45,
+                    fontWeight: FontWeight.w500)),
           ],
         ),
+      ),
+    );
+  }
+
+  // "'쿼리'로 새 메모" 행 — 결과 목록 맨 끝. Enter/클릭으로 생성.
+  Widget _createTile(int i) {
+    return _row(
+      selected: _selected == i,
+      onTap: _createFromQuery,
+      onHover: () => _selectByHover(i),
+      child: Row(
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: _accent.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Icon(Icons.add, size: 10, color: _accent),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: const TextStyle(fontSize: 14, color: Colors.black54),
+                children: [
+                  TextSpan(
+                      text: '“${_query.trim()}”',
+                      style: const TextStyle(color: Colors.black87)),
+                  const TextSpan(text: ' 새 메모'),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _selectByHover(int i) {
+    setState(() {
+      _selected = i;
+      if (i < _results.length) _panelId = _results[i].id;
+    });
+  }
+
+  // 공통 행 컨테이너: 선택 시 옅은 배경 + 둥근 모서리.
+  Widget _row({
+    required bool selected,
+    required VoidCallback onTap,
+    required VoidCallback onHover,
+    required Widget child,
+  }) {
+    return MouseRegion(
+      onEnter: (_) => onHover(),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          alignment: Alignment.centerLeft,
+          decoration: BoxDecoration(
+            color: selected
+                ? _accent.withValues(alpha: 0.16)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  // 빈 검색 화면의 날짜 퀵 칩 — 날짜로도 찾을 수 있다는 걸 노출(발견성).
+  Widget _dateChips() {
+    const items = ['오늘', '어제', '이번 주', '지난 주', '이번 달'];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
+      child: Row(
+        children: [
+          const Icon(Icons.calendar_today_rounded,
+              size: 13, color: Colors.black26),
+          const SizedBox(width: 9),
+          for (final t in items)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _applyChip(t),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0x07000000),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0x0F000000)),
+                  ),
+                  child: Text(t,
+                      style: const TextStyle(
+                          fontSize: 12, color: Colors.black54)),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _applyChip(String t) {
+    _q.text = t;
+    _query = t;
+    _q.selection = TextSelection.collapsed(offset: t.length);
+    _runSearch();
+    _focus.requestFocus();
+  }
+
+  // 본문 좌측(또는 단독): 둘러보기(빈 검색) = 묶음, 아니면 결과 목록.
+  Widget _mainList(List<Sticky> results) {
+    if (_browsing) return _clusterBrowse();
+    if (results.isEmpty && !_hasCreateRow) return _emptyState();
+    final children = <Widget>[];
+    for (var i = 0; i < _exactCount && i < results.length; i++) {
+      children.add(_resultTile(results[i], i));
+    }
+    if (results.length > _exactCount) {
+      children.add(_sectionLabel('AI 관련'));
+      for (var i = _exactCount; i < results.length; i++) {
+        children.add(_resultTile(results[i], i));
+      }
+    }
+    if (_hasCreateRow) children.add(_createTile(results.length));
+    return ListView(
+      controller: _scroll,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      children: children,
+    );
+  }
+
+  // 구역 라벨 (정확 일치 / AI 관련 사이).
+  Widget _sectionLabel(String t) => Padding(
+        padding: const EdgeInsets.fromLTRB(18, 10, 16, 4),
+        child: Row(
+          children: [
+            const Icon(Icons.auto_awesome, size: 12, color: Colors.black26),
+            const SizedBox(width: 6),
+            Text(t,
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black38,
+                    letterSpacing: 0.2)),
+          ],
+        ),
+      );
+
+  Widget _emptyState() => const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded, size: 26, color: Colors.black26),
+            SizedBox(height: 8),
+            Text('결과가 없어요',
+                style: TextStyle(color: Colors.black38, fontSize: 13)),
+          ],
+        ),
+      );
+
+  // 빈 검색 = 묶음 둘러보기. 묶음이 없으면 최근 메모로 폴백.
+  Widget _clusterBrowse() {
+    if (_clusters.isEmpty) {
+      if (_results.isEmpty) return _emptyState();
+      return ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        itemExtent: _rowExtent,
+        itemCount: _results.length,
+        itemBuilder: (_, i) => _resultTile(_results[i], i),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 10),
+      children: [for (final c in _clusters) _clusterGroup(c)],
+    );
+  }
+
+  // 묶음 한 덩어리: 대표(허브) 헤더 + 나머지 멤버.
+  Widget _clusterGroup(List<Map<String, dynamic>> members) {
+    final hub = members.first;
+    final List<Map<String, dynamic>> rest =
+        members.length > 1 ? members.sublist(1) : const [];
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0x05000000),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _noteRow(hub, bold: true, trailing: _countBadge(members.length)),
+          for (final m in rest) _noteRow(m, indent: true),
+        ],
+      ),
+    );
+  }
+
+  // 메모 한 줄(색칩 + 미리보기). 클릭 → 그 메모 소환.
+  Widget _noteRow(Map<String, dynamic> m,
+      {bool bold = false, bool indent = false, Widget? trailing}) {
+    return MouseRegion(
+      onEnter: (_) {
+        final id = m['id'] as String;
+        if (_panelId != id) setState(() => _panelId = id);
+      },
+      child: InkWell(
+        onTap: () => _openId(m['id'] as String),
+        borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(indent ? 26 : 12, 8, 12, 8),
+        child: Row(
+          children: [
+            _chip(m['color'] as int),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Text(
+                m['preview'] as String,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 13.5,
+                    color: bold ? Colors.black87 : Colors.black54,
+                    fontWeight: bold ? FontWeight.w600 : FontWeight.w400),
+              ),
+            ),
+            ?trailing,
+          ],
+        ),
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(int colorIndex) => Container(
+        width: 12,
+        height: 12,
+        decoration: BoxDecoration(
+          color: StickyPalette.of(colorIndex),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: const Color(0x14000000)),
+        ),
+      );
+
+  Widget _countBadge(int n) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: _accent.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text('$n',
+            style: const TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w700, color: _accent)),
+      );
+
+  Future<void> _openId(String id) async {
+    await _hide();
+    await mainController.showOne(id);
+  }
+
+  // 관련 패널 대상 = hover/선택 중인 메모. 없으면 선택된 결과.
+  String? get _panelTargetId => _panelId ?? _selectedSticky?.id;
+
+  // 대상 메모와 '같은 묶음'인 메모들.
+  List<Map<String, dynamic>> _relatedItems() {
+    final id = _panelTargetId;
+    return id == null ? const [] : mainController.sameCluster(id);
+  }
+
+  // 분할 모드: 우측 패널에 hover/선택 메모의 같은-묶음 메모.
+  Widget _relatedPanel() {
+    final id = _panelTargetId;
+    final items = _relatedItems();
+    return Container(
+      color: const Color(0x04000000),
+      child: id == null
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Text('메모에 마우스를 올리면\n같은 묶음 메모가 여기에',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 12.5, color: Colors.black38, height: 1.5)),
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(14, 14, 10, 12),
+              children: [
+                _panelCurrent(id),
+                const SizedBox(height: 10),
+                _relatedHeader(),
+                const SizedBox(height: 2),
+                if (items.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(8, 6, 8, 6),
+                    child: Text('이 메모는 아직 다른 메모와 묶이지 않았어요',
+                        style: TextStyle(
+                            fontSize: 12.5, color: Colors.black38, height: 1.4)),
+                  )
+                else
+                  for (final m in items) _noteRow(m),
+              ],
+            ),
+    );
+  }
+
+  // 컴팩트 모드: 하단에 선택 결과의 같은-묶음 메모(살짝).
+  Widget _relatedInline() {
+    final items = _relatedItems();
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 138),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Color(0x0D000000))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 14, 2),
+            child: _relatedHeader(),
+          ),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.only(bottom: 6),
+              children: [for (final m in items) _noteRow(m)],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 패널 상단: 지금 보고 있는(hover/선택) 메모.
+  Widget _panelCurrent(String id) {
+    final brief = mainController.noteBrief(id);
+    if (brief == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: _chip(brief['color'] as int),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              brief['preview'] as String,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                  height: 1.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _relatedHeader() => Row(
+        children: [
+          const Icon(Icons.bubble_chart_outlined,
+              size: 14, color: Colors.black38),
+          const SizedBox(width: 6),
+          const Text('같은 묶음',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black54,
+                  letterSpacing: -0.2)),
+          const SizedBox(width: 6),
+          _countBadge(_relatedItems().length),
+        ],
+      );
+
+  Widget _footerHint() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 6, 8, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: const TextStyle(fontSize: 11, color: Colors.black38),
+                children: [
+                  const TextSpan(text: '↑↓ 이동   ↵ 열기   esc 닫기'),
+                  TextSpan(
+                      text: '     6월 이후·6/1~6/10 기간',
+                      style:
+                          TextStyle(color: Colors.black.withValues(alpha: 0.22))),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          // 관련 표시 토글: 컴팩트(하단) ↔ 분할(우측 패널)
+          Tooltip(
+            message: _split ? '컴팩트 보기' : '분할 보기(관련 메모 옆에)',
+            child: InkWell(
+              onTap: _toggleSplit,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Icon(
+                  _split
+                      ? Icons.vertical_split_outlined
+                      : Icons.horizontal_split_outlined,
+                  size: 16,
+                  color: _split ? _accent : Colors.black38,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

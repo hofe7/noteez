@@ -109,9 +109,9 @@ Future<void> main(List<String> args) async {
     final nodes = (m['nodes'] as List).cast<Map<String, dynamic>>();
     final edges = (m['edges'] as List).cast<Map<String, dynamic>>();
     windowManager.waitUntilReadyToShow(
-      const WindowOptions(size: Size(760, 580), center: true),
+      const WindowOptions(size: Size(460, 640), center: true),
       () async {
-        await windowManager.setTitle('Noteez · 지식 그래프');
+        await windowManager.setTitle('Noteez · 묶음');
         await windowManager.show();
       },
     );
@@ -121,7 +121,7 @@ Future<void> main(List<String> args) async {
 
   // 스티커 창
   final sticky = Sticky.fromJson(m);
-  final startHidden = m['startHidden'] == true; // 빠른 캡처: 포커스 안 뺏게 숨김 시작
+  final focusOnOpen = m['focusOnOpen'] == true; // 검색/소환으로 열림 → 바로 편집
   const opts = WindowOptions(
     size: Size(248, 212),
     backgroundColor: Colors.transparent,
@@ -133,12 +133,8 @@ Future<void> main(List<String> args) async {
     await windowManager.setBackgroundColor(Colors.transparent);
     await windowManager.setPosition(Offset(sticky.x, sticky.y));
     await windowManager.setHasShadow(true);
-    // 빠른 캡처로 만든 창은 네이티브가 띄워도 강제로 숨김(포커스/중복 방지).
-    if (startHidden) {
-      await windowManager.hide();
-    } else {
-      await windowManager.show();
-    }
+    await windowManager.show();
+    if (focusOnOpen) await windowManager.focus();
   });
-  runApp(StickyWindowApp(initial: sticky));
+  runApp(StickyWindowApp(initial: sticky, focusOnOpen: focusOnOpen));
 }
