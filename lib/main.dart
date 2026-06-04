@@ -1,0 +1,144 @@
+import 'dart:convert';
+
+import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
+
+import 'embed/embed_spike.dart';
+import 'main_controller.dart';
+import 'menubar.dart';
+import 'models/sticky.dart';
+import 'report.dart';
+import 'windows/control_window.dart';
+import 'windows/graph_window.dart';
+import 'windows/report_window.dart';
+import 'windows/search_palette.dart';
+import 'windows/sticky_window.dart';
+
+// 임베딩 스파이크 토글 (검증 완료 → false. 연결 기능은 제품에 직접 배선 예정).
+const bool _kEmbedSpike = false;
+
+/// 모든 창(메인/스티커)이 main()을 돈다. fromCurrentEngine().arguments 로 구분.
+Future<void> main(List<String> args) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await windowManager.ensureInitialized();
+
+  final wc = await WindowController.fromCurrentEngine();
+  final argStr = wc.arguments;
+
+  // SPIKE: 임베딩 검증 (Step A). 끝나면 _kEmbedSpike=false 로 끄기.
+  if (argStr.isEmpty && _kEmbedSpike) {
+    final result = await runEmbeddingSpike();
+    runApp(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('EMBED SPIKE\n\n$result'),
+          ),
+        ),
+      ),
+    ));
+    return;
+  }
+
+  if (argStr.isEmpty) {
+    // 메인 = 권위자. DB 로드 + 스티커 창 생성.
+    await mainController.start();
+
+    // 메뉴바 + 글로벌 핫키. 성공하면 컨트롤 창 없이 숨김(메뉴바 앱).
+    // 실패하면 안전하게 컨트롤 창으로 폴백(메모 추가 수단 보장).
+    var trayOk = true;
+    try {
+      await menubar.init();
+    } catch (e) {
+      trayOk = false;
+      debugPrint('menubar init failed, falling back to control window: $e');
+    }
+
+    if (trayOk) {
+      // 메인 창 = 검색 팔레트(Spotlight식). 평소 숨김, ⌘⇧K 로 표시.
+      windowManager.waitUntilReadyToShow(
+        const WindowOptions(
+          size: Size(560, 440),
+          center: true,
+          backgroundColor: Colors.transparent,
+          titleBarStyle: TitleBarStyle.hidden,
+          windowButtonVisibility: false,
+          skipTaskbar: true,
+        ),
+        () async {
+          await windowManager.setAsFrameless();
+          await windowManager.setBackgroundColor(Colors.transparent);
+          await windowManager.hide();
+        },
+      );
+      runApp(const SearchPaletteApp());
+    } else {
+      windowManager.waitUntilReadyToShow(
+        const WindowOptions(size: Size(300, 220), center: true),
+        () async {
+          await windowManager.setTitle('Noteez');
+          await windowManager.show();
+        },
+      );
+      runApp(const ControlWindow());
+    }
+    return;
+  }
+
+  final m = jsonDecode(argStr) as Map<String, dynamic>;
+
+  // 리포트 창
+  if (m['kind'] == 'report') {
+    final data = ReportData.fromJson(m['data'] as Map<String, dynamic>);
+    windowManager.waitUntilReadyToShow(
+      const WindowOptions(size: Size(460, 600), center: true),
+      () async {
+        await windowManager.setTitle('Noteez · 내가 한 일');
+        await windowManager.show();
+      },
+    );
+    runApp(ReportWindowApp(data: data));
+    return;
+  }
+
+  // 지식 그래프 창
+  if (m['kind'] == 'graph') {
+    final nodes = (m['nodes'] as List).cast<Map<String, dynamic>>();
+    final edges = (m['edges'] as List).cast<Map<String, dynamic>>();
+    windowManager.waitUntilReadyToShow(
+      const WindowOptions(size: Size(760, 580), center: true),
+      () async {
+        await windowManager.setTitle('Noteez · 지식 그래프');
+        await windowManager.show();
+      },
+    );
+    runApp(GraphWindowApp(nodes: nodes, edges: edges));
+    return;
+  }
+
+  // 스티커 창
+  final sticky = Sticky.fromJson(m);
+  final startHidden = m['startHidden'] == true; // 빠른 캡처: 포커스 안 뺏게 숨김 시작
+  const opts = WindowOptions(
+    size: Size(248, 212),
+    backgroundColor: Colors.transparent,
+    titleBarStyle: TitleBarStyle.hidden,
+    windowButtonVisibility: false,
+  );
+  windowManager.waitUntilReadyToShow(opts, () async {
+    await windowManager.setAsFrameless();
+    await windowManager.setBackgroundColor(Colors.transparent);
+    await windowManager.setPosition(Offset(sticky.x, sticky.y));
+    await windowManager.setHasShadow(true);
+    // 빠른 캡처로 만든 창은 네이티브가 띄워도 강제로 숨김(포커스/중복 방지).
+    if (startHidden) {
+      await windowManager.hide();
+    } else {
+      await windowManager.show();
+    }
+  });
+  runApp(StickyWindowApp(initial: sticky));
+}

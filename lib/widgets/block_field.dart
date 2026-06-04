@@ -1,0 +1,206 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../models/sticky.dart';
+
+/// 블록 한 줄 에디터. 무거운 리치텍스트 프레임워크 없이,
+/// todo는 Checkbox+텍스트(완료 시 취소선), text는 그냥 텍스트.
+class BlockField extends StatefulWidget {
+  final Block block;
+  final bool shouldFocus;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onEnter;
+  final VoidCallback onBackspaceEmpty;
+  final ValueChanged<bool> onToggle;
+  final ValueChanged<int> onArrowUp; // 인자 = 현재 가로 위치(컬럼)
+  final ValueChanged<int> onArrowDown;
+  final VoidCallback onToggleType; // ⌘L: 텍스트↔체크박스 토글
+  final int? focusColumn; // 포커스 시 둘 위치(null=끝)
+  final int focusTick; // 값 바뀌면(같은 shouldFocus라도) 다시 포커스
+
+  const BlockField({
+    super.key,
+    required this.block,
+    required this.shouldFocus,
+    required this.onChanged,
+    required this.onEnter,
+    required this.onBackspaceEmpty,
+    required this.onToggle,
+    required this.onArrowUp,
+    required this.onArrowDown,
+    required this.onToggleType,
+    this.focusColumn,
+    this.focusTick = 0,
+  });
+
+  @override
+  State<BlockField> createState() => _BlockFieldState();
+}
+
+class _BlockFieldState extends State<BlockField> {
+  late final TextEditingController _c =
+      TextEditingController(text: widget.block.text);
+  late final FocusNode _f = FocusNode(onKeyEvent: _onKey);
+
+  // 빈 블록에서 Backspace → 위로 병합. 비어있을 때만 처리하므로
+  // 텍스트가 있을 땐 기본 삭제와 충돌하지 않는다.
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (e is KeyDownEvent &&
+        e.logicalKey == LogicalKeyboardKey.backspace &&
+        _c.text.isEmpty) {
+      widget.onBackspaceEmpty();
+      return KeyEventResult.handled;
+    }
+    // Enter = 새 블록, Shift+Enter = 블록 안 줄바꿈(그대로 통과).
+    if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.enter) {
+      if (HardwareKeyboard.instance.isShiftPressed) {
+        return KeyEventResult.ignored;
+      }
+      widget.onEnter();
+      return KeyEventResult.handled;
+    }
+    // 첫 줄에서 ↑ = 이전 블록, 마지막 줄에서 ↓ = 다음 블록.
+    if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.arrowUp) {
+      final sel = _c.selection.baseOffset;
+      final before = (sel <= 0) ? '' : _c.text.substring(0, sel);
+      if (!before.contains('\n')) {
+        widget.onArrowUp(_column());
+        return KeyEventResult.handled;
+      }
+    }
+    if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.arrowDown) {
+      final sel = _c.selection.baseOffset;
+      final after = (sel < 0 || sel > _c.text.length) ? '' : _c.text.substring(sel);
+      if (!after.contains('\n')) {
+        widget.onArrowDown(_column());
+        return KeyEventResult.handled;
+      }
+    }
+    // ⌘L: 현재 줄 텍스트↔체크박스 토글
+    if (e is KeyDownEvent &&
+        e.logicalKey == LogicalKeyboardKey.keyL &&
+        HardwareKeyboard.instance.isMetaPressed) {
+      widget.onToggleType();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  // 현재 캐럿의 가로 위치(현재 줄 시작부터의 거리).
+  int _column() {
+    final off = _c.selection.baseOffset;
+    if (off < 0) return _c.text.length;
+    final before = _c.text.substring(0, off);
+    final nl = before.lastIndexOf('\n');
+    return off - (nl + 1);
+  }
+
+  void _focusSoon() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _f.requestFocus();
+      final len = _c.text.length;
+      final col = widget.focusColumn;
+      final off = (col == null) ? len : (col > len ? len : col);
+      _c.selection = TextSelection.collapsed(offset: off);
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.shouldFocus) _focusSoon();
+  }
+
+  @override
+  void didUpdateWidget(covariant BlockField old) {
+    super.didUpdateWidget(old);
+    if (widget.block.text != _c.text) {
+      final sel = _c.selection;
+      final len = widget.block.text.length;
+      _c.value = TextEditingValue(
+        text: widget.block.text,
+        selection: sel.isValid && sel.start <= len
+            ? sel
+            : TextSelection.collapsed(offset: len),
+      );
+    }
+    if (widget.shouldFocus &&
+        (!old.shouldFocus || widget.focusTick != old.focusTick)) {
+      _focusSoon();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    _f.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final block = widget.block;
+    final isTodo = block is TodoBlock;
+    final checked = block is TodoBlock && block.checked;
+
+    final field = TextField(
+      controller: _c,
+      focusNode: _f,
+      maxLines: null,
+      keyboardType: TextInputType.multiline,
+      onChanged: widget.onChanged,
+      style: TextStyle(
+        fontSize: 14,
+        height: 1.3,
+        // 글자를 줄 박스 가운데로(기본은 위로 붙어서 체크박스와 어긋남).
+        leadingDistribution: TextLeadingDistribution.even,
+        decoration:
+            checked ? TextDecoration.lineThrough : TextDecoration.none,
+        color: checked ? Colors.black38 : Colors.black87,
+      ),
+      cursorColor: Colors.black54,
+      cursorWidth: 1.4,
+      decoration: InputDecoration(
+        isDense: true,
+        border: InputBorder.none,
+        contentPadding: const EdgeInsets.symmetric(vertical: 3),
+        hintText: isTodo ? '할 일' : null,
+        hintStyle: const TextStyle(color: Colors.black26, fontSize: 14),
+      ),
+    );
+
+    // 구조를 항상 Row[리딩칸, 필드]로 고정 → text↔todo 변환 시 TextField가
+    // remount 되지 않아 포커스/커서가 그대로 유지됨(변환 직후 바로 입력 가능).
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 리딩칸: todo면 체크박스, text면 0폭(자리 유지).
+        if (isTodo)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => widget.onToggle(!checked),
+            child: Container(
+              width: 16,
+              height: 16,
+              margin: const EdgeInsets.only(top: 1, right: 8),
+              decoration: BoxDecoration(
+                color: checked ? Colors.black54 : Colors.transparent,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: checked ? Colors.black54 : Colors.black38,
+                  width: 1.5,
+                ),
+              ),
+              child: checked
+                  ? const Icon(Icons.check, size: 11, color: Colors.white)
+                  : null,
+            ),
+          )
+        else
+          const SizedBox.shrink(),
+        Expanded(child: field),
+      ],
+    );
+  }
+}
