@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'connection_engine.dart';
+import 'date_query.dart';
 import 'db/database.dart';
 import 'ipc.dart';
 import 'models/sticky.dart';
@@ -146,6 +147,66 @@ class MainController extends ChangeNotifier {
     return null;
   }
 
+  Map<String, dynamic>? _nodeOf(String id) {
+    for (final s in stickies) {
+      if (s.id == id) {
+        return {'id': id, 'preview': s.preview, 'color': s.colorIndex};
+      }
+    }
+    return null;
+  }
+
+  /// 승인된 연결의 연결요소(묶음) 목록. 각 멤버 {id,preview,color}, 큰 묶음 먼저.
+  /// 검색창 '둘러보기' + 회고에 사용.
+  List<List<Map<String, dynamic>>> clusters() {
+    final seen = <String>{};
+    final out = <List<Map<String, dynamic>>>[];
+    for (final start in _links.keys) {
+      if (seen.contains(start)) continue;
+      if (_links[start]?.isEmpty ?? true) continue;
+      final comp = <String>[];
+      final q = <String>[start];
+      seen.add(start);
+      while (q.isNotEmpty) {
+        final u = q.removeLast();
+        comp.add(u);
+        for (final v in _links[u] ?? const <String>{}) {
+          if (seen.add(v)) q.add(v);
+        }
+      }
+      comp.sort(
+          (a, b) => (_links[b]?.length ?? 0).compareTo(_links[a]?.length ?? 0));
+      final members = [for (final id in comp) _nodeOf(id)]
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      if (members.length >= 2) out.add(members);
+    }
+    out.sort((a, b) => b.length.compareTo(a.length));
+    return out;
+  }
+
+  /// 한 메모와 '같은 묶음'인 다른 메모들 (가까운=연결 많은 순). 없으면 빈 리스트.
+  List<Map<String, dynamic>> sameCluster(String id) {
+    if (!_links.containsKey(id)) return const [];
+    final seen = <String>{id};
+    final q = <String>[id];
+    final comp = <String>[];
+    while (q.isNotEmpty) {
+      final u = q.removeLast();
+      for (final v in _links[u] ?? const <String>{}) {
+        if (seen.add(v)) {
+          q.add(v);
+          comp.add(v);
+        }
+      }
+    }
+    comp.sort(
+        (a, b) => (_links[b]?.length ?? 0).compareTo(_links[a]?.length ?? 0));
+    return [for (final cid in comp) _nodeOf(cid)]
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+
   Future<void> addSticky() async {
     final n = stickies.length;
     final s = makeSticky(x: 200 + n * 26.0, y: 180 + n * 26.0, colorIndex: n % 6);
@@ -167,6 +228,10 @@ class MainController extends ChangeNotifier {
     final wc = _windows[id];
     if (wc != null) {
       await wc.show();
+      // 이미 열린 창: 바로 편집할 수 있게 마지막 줄에 커서.
+      try {
+        await wc.invokeMethod('focusEditor');
+      } catch (_) {/* 핸들러 아직 미등록 등 — 무시 */}
       return;
     }
     final i = stickies.indexWhere((e) => e.id == id);
@@ -175,34 +240,64 @@ class MainController extends ChangeNotifier {
       stickies[i] = stickies[i].copyWith(open: true);
       await _db.upsert(stickies[i]);
     }
-    await _spawn(stickies[i]);
+    // 닫혀있던 창: 새로 띄우면서 포커스 플래그 전달(핸들러 등록 타이밍 회피).
+    await _spawn(stickies[i], focusOnOpen: true);
   }
 
-  /// 검색: 빈 쿼리=최근순. 모델 있으면 의미검색+키워드 부스트, 없으면 키워드만.
-  Future<List<Sticky>> search(String query) async {
+  Map<String, dynamic>? noteBrief(String id) => _nodeOf(id);
+
+  /// 검색 결과를 두 묶음으로:
+  ///  - exact: 키워드가 실제로 들어있는 메모(정확한 일치). 또는 날짜/빈쿼리 결과.
+  ///  - related: 키워드는 없지만 의미상 가까운 메모(AI 관련). 노이즈 방지로 높은 바 + 소수만.
+  Future<({List<Sticky> exact, List<Sticky> related})> search(
+      String query) async {
     final q = query.trim();
     if (q.isEmpty) {
-      return [...stickies]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      final recent = [...stickies]
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      return (exact: recent, related: const <Sticky>[]);
     }
-    final lq = q.toLowerCase();
-    bool kw(Sticky s) => s.blocks.any((b) => b.text.toLowerCase().contains(lq));
 
-    // rankByQuery 가 모델 lazy 로드(첫 검색 시). 모델 없으면 [] → 키워드만.
+    // 날짜 질의면 작성·수정일로 필터(전부 정확 묶음).
+    final range = parseDateQuery(q, DateTime.now());
+    if (range != null) {
+      final hits = stickies
+          .where((s) =>
+              range.contains(s.createdAt) || range.contains(s.updatedAt))
+          .toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return (exact: hits, related: const <Sticky>[]);
+    }
+
+    // 키워드 일치는 띄어쓰기·대소문자 무시 ("구조개선"="구조 개선", "redis"="Redis").
+    String norm(String s) => s.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    final nq = norm(q);
+    bool kw(Sticky s) => s.blocks.any((b) => norm(b.text).contains(nq));
+
+    // 정확 일치(키워드 포함) — 최근순.
+    final exact = stickies.where(kw).toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final exactIds = {for (final s in exact) s.id};
+
+    // 의미상 관련 — 키워드엔 없지만 임베딩 점수 높은 것 (음차 "레디스"→Redis 등).
+    // 정확 일치가 있으면 엄격(보너스만), 없으면 관대(의미검색이 곧 답) → 빈 결과 방지.
     final sem = <String, double>{
       for (final e in await _conn.rankByQuery(q)) e.key: e.value,
     };
-    final scored = stickies
-        .map((s) => MapEntry(s, (sem[s.id] ?? 0.0) + (kw(s) ? 0.12 : 0.0)))
+    final double relatedBar = exact.isEmpty ? 0.80 : 0.88;
+    final int relatedMax = exact.isEmpty ? 6 : 4;
+    final related = <Sticky>[];
+    final cands = stickies
+        .where((s) => !exactIds.contains(s.id))
+        .map((s) => MapEntry(s, sem[s.id] ?? 0.0))
+        .where((e) => e.value >= relatedBar)
         .toList()
       ..sort((a, b) => b.value.compareTo(a.value));
-
-    const floor = 0.80; // 의미 유사도 하한 (튜닝 대상). 키워드 일치는 무조건 포함.
-    final res = <Sticky>[];
-    for (final e in scored) {
-      if (e.value >= floor || kw(e.key)) res.add(e.key);
-      if (res.length >= 20) break;
+    for (final e in cands) {
+      related.add(e.key);
+      if (related.length >= relatedMax) break;
     }
-    return res;
+    return (exact: exact, related: related);
   }
 
   // 메인 창(검색/캡처) 투명·프레임리스를 열 때마다 재적용. (시작 시 1회만 하면
@@ -217,7 +312,7 @@ class MainController extends ChangeNotifier {
 
   /// 검색 팔레트(메인 창) 표시 + 포커스.
   Future<void> openSearch() async {
-    await _prepCommandWindow(const Size(560, 440));
+    await _prepCommandWindow(const Size(596, 484));
     searchTick.value++;
     await windowManager.show();
     await windowManager.focus();
@@ -225,7 +320,7 @@ class MainController extends ChangeNotifier {
 
   /// 빠른 캡처 바(메인 창) 표시 + 포커스.
   Future<void> openCapture() async {
-    await _prepCommandWindow(const Size(560, 128));
+    await _prepCommandWindow(const Size(596, 168));
     captureTick.value++;
     await windowManager.show();
     await windowManager.focus();
@@ -299,9 +394,9 @@ class MainController extends ChangeNotifier {
     );
   }
 
-  Future<void> _spawn(Sticky s, {bool startHidden = false}) async {
-    final args = startHidden
-        ? jsonEncode({...s.toJson(), 'startHidden': true})
+  Future<void> _spawn(Sticky s, {bool focusOnOpen = false}) async {
+    final args = focusOnOpen
+        ? jsonEncode({...s.toJson(), 'focusOnOpen': true})
         : jsonEncode(s.toJson());
     final wc = await WindowController.create(
       WindowConfiguration(hiddenAtLaunch: true, arguments: args),

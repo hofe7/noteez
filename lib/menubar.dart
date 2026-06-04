@@ -77,7 +77,7 @@ class MenubarController with TrayListener {
           MenuItem(key: 'capture', label: '빠른 캡처   ⌘⇧Space'),
           MenuItem(key: 'search', label: '검색   ⌘⇧K'),
           MenuItem(key: 'report', label: '내가 한 일   ⌘⇧R'),
-          MenuItem(key: 'graph', label: '지식 그래프   ⌘⇧G'),
+          MenuItem(key: 'graph', label: '묶음   ⌘⇧G'),
           MenuItem(key: 'showAll', label: '모든 스티커 보이기   ⌘⇧S'),
           MenuItem.separator(),
           MenuItem(key: 'quit', label: 'Noteez 종료'),

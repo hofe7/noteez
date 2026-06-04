@@ -13,7 +13,9 @@ import '../widgets/block_field.dart';
 
 class StickyWindowApp extends StatelessWidget {
   final Sticky initial;
-  const StickyWindowApp({super.key, required this.initial});
+  final bool focusOnOpen;
+  const StickyWindowApp(
+      {super.key, required this.initial, this.focusOnOpen = false});
 
   @override
   Widget build(BuildContext context) {
@@ -21,14 +23,16 @@ class StickyWindowApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       color: Colors.transparent,
       theme: ThemeData(useMaterial3: true),
-      home: StickyWindow(initial: initial),
+      home: StickyWindow(initial: initial, focusOnOpen: focusOnOpen),
     );
   }
 }
 
 class StickyWindow extends StatefulWidget {
   final Sticky initial;
-  const StickyWindow({super.key, required this.initial});
+  final bool focusOnOpen; // 검색/소환으로 열렸으면 바로 편집 포커스
+  const StickyWindow(
+      {super.key, required this.initial, this.focusOnOpen = false});
 
   @override
   State<StickyWindow> createState() => _StickyWindowState();
@@ -68,9 +72,18 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   void initState() {
     super.initState();
     windowManager.addListener(this);
+    // 메인→이 창 단일 메시지 채널: 'focusEditor' 오면 마지막 줄에 커서.
+    WindowController.fromCurrentEngine().then((c) {
+      c.setWindowMethodHandler((call) async {
+        if (call.method == 'focusEditor' && mounted) _focusLastBlock();
+        return null;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchConnection();
       if (_s.pinned) windowManager.setAlwaysOnTop(true);
+      // 검색에서 켜졌으면 바로 입력 가능하도록 마지막 줄 포커스.
+      if (widget.focusOnOpen) _focusLastBlock();
     });
     // 시작 시 임베딩이 아직이면 제안이 비어있으니, 잠시 후 한 번 더 조회.
     Future.delayed(const Duration(milliseconds: 1800), () {
