@@ -67,7 +67,7 @@ class MenubarController with TrayListener {
         modifiers: [HotKeyModifier.meta, HotKeyModifier.shift],
         scope: HotKeyScope.system,
       ),
-      keyDownHandler: (_) => mainController.openGraph(),
+      keyDownHandler: (_) => mainController.openOverview(),
     );
   }
 
@@ -77,7 +77,7 @@ class MenubarController with TrayListener {
           MenuItem(key: 'capture', label: '빠른 캡처   ⌘⇧Space'),
           MenuItem(key: 'search', label: '검색   ⌘⇧K'),
           MenuItem(key: 'report', label: '내가 한 일   ⌘⇧R'),
-          MenuItem(key: 'graph', label: '묶음   ⌘⇧G'),
+          MenuItem(key: 'graph', label: '전체 보기   ⌘⇧G'),
           MenuItem(key: 'showAll', label: '모든 스티커 보이기   ⌘⇧S'),
           MenuItem.separator(),
           MenuItem(key: 'quit', label: 'Noteez 종료'),
@@ -102,7 +102,7 @@ class MenubarController with TrayListener {
       case 'report':
         mainController.openReport();
       case 'graph':
-        mainController.openGraph();
+        mainController.openOverview();
       case 'showAll':
         mainController.showAll();
       case 'quit':

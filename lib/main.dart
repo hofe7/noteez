@@ -10,7 +10,7 @@ import 'menubar.dart';
 import 'models/sticky.dart';
 import 'report.dart';
 import 'windows/control_window.dart';
-import 'windows/graph_window.dart';
+import 'windows/graph_window.dart' show OverviewWindowApp;
 import 'windows/report_window.dart';
 import 'windows/search_palette.dart';
 import 'windows/sticky_window.dart';
@@ -104,18 +104,18 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  // 지식 그래프 창
-  if (m['kind'] == 'graph') {
-    final nodes = (m['nodes'] as List).cast<Map<String, dynamic>>();
+  // 전체 보기 창 (묶음 + 그 외 + 서랍)
+  if (m['kind'] == 'overview') {
+    final notes = (m['notes'] as List).cast<Map<String, dynamic>>();
     final edges = (m['edges'] as List).cast<Map<String, dynamic>>();
     windowManager.waitUntilReadyToShow(
       const WindowOptions(size: Size(460, 640), center: true),
       () async {
-        await windowManager.setTitle('Noteez · 묶음');
+        await windowManager.setTitle('Noteez · 전체 보기');
         await windowManager.show();
       },
     );
-    runApp(GraphWindowApp(nodes: nodes, edges: edges));
+    runApp(OverviewWindowApp(notes: notes, edges: edges));
     return;
   }
 

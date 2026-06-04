@@ -76,6 +76,11 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     WindowController.fromCurrentEngine().then((c) {
       c.setWindowMethodHandler((call) async {
         if (call.method == 'focusEditor' && mounted) _focusLastBlock();
+        // 전체 보기에서 '서랍에 넣기' → 메인이 상태 갱신 후 창만 닫으라고 요청.
+        if (call.method == 'requestClose') {
+          _saveTimer?.cancel();
+          await windowManager.close();
+        }
         return null;
       });
     });

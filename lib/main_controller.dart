@@ -22,6 +22,7 @@ class MainController extends ChangeNotifier {
   final ConnectionEngine _conn = ConnectionEngine();
   final List<Sticky> stickies = [];
   final Map<String, WindowController> _windows = {};
+  WindowController? _overviewWin; // 전체 보기 창(열려 있으면 변경을 push)
 
   /// 승인된 연결(양방향 인접). stickyId → 연결된 stickyId 집합. 지식 그래프.
   final Map<String, Set<String>> _links = {};
@@ -90,6 +91,7 @@ class MainController extends ChangeNotifier {
         await _db.upsert(s);
         await _conn.index(s);
         notifyListeners();
+        _pushOverview();
       case 'deleteSticky':
         final id = call.arguments as String;
         stickies.removeWhere((e) => e.id == id);
@@ -101,6 +103,7 @@ class MainController extends ChangeNotifier {
         }
         await _db.softDelete(id);
         notifyListeners();
+        _pushOverview();
       case 'newSticky':
         await addSticky();
       case 'getConnection':
@@ -120,6 +123,7 @@ class MainController extends ChangeNotifier {
         await _db.insertLink(
             _uuid.v4(), a, b, DateTime.now().millisecondsSinceEpoch);
         _addLinkMem(a, b);
+        _pushOverview();
       case 'closeSticky':
         // 닫기(보관): 창만 닫고 데이터는 유지(open=false).
         final id = call.arguments as String;
@@ -129,6 +133,23 @@ class MainController extends ChangeNotifier {
           await _db.upsert(stickies[i]);
         }
         _windows.remove(id);
+        _pushOverview();
+      case 'drawerSticky':
+        // 전체 보기에서 '서랍에 넣기': 데이터 open=false + 실제 창 닫기 요청.
+        final id = call.arguments as String;
+        final i = stickies.indexWhere((e) => e.id == id);
+        if (i != -1) {
+          stickies[i] = stickies[i].copyWith(open: false);
+          await _db.upsert(stickies[i]);
+        }
+        final wc = _windows.remove(id);
+        if (wc != null) {
+          try {
+            await wc.invokeMethod('requestClose');
+          } catch (_) {/* 이미 닫힘 등 */}
+        }
+        notifyListeners();
+        _pushOverview();
       case 'focusSticky':
         await showOne(call.arguments as String);
     }
@@ -242,6 +263,8 @@ class MainController extends ChangeNotifier {
     }
     // 닫혀있던 창: 새로 띄우면서 포커스 플래그 전달(핸들러 등록 타이밍 회피).
     await _spawn(stickies[i], focusOnOpen: true);
+    notifyListeners();
+    _pushOverview();
   }
 
   Map<String, dynamic>? noteBrief(String id) => _nodeOf(id);
@@ -352,19 +375,18 @@ class MainController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 지식 그래프 창 열기 (승인된 연결로 구성). 연결된 메모만 표시.
-  Future<void> openGraph() async {
-    final linkedIds = <String>{};
-    _links.forEach((a, set) {
-      if (set.isNotEmpty) {
-        linkedIds.add(a);
-        linkedIds.addAll(set);
-      }
-    });
-    final nodes = [
+  /// 전체 보기 데이터(메모+연결). 열 때와 갱신 push 에 공용.
+  Map<String, dynamic> _overviewData() {
+    final notes = [
       for (final s in stickies)
-        if (linkedIds.contains(s.id))
-          {'id': s.id, 'label': s.preview, 'color': s.colorIndex},
+        {
+          'id': s.id,
+          'label': s.preview,
+          'color': s.colorIndex,
+          'open': s.open,
+          'updatedAt': s.updatedAt.millisecondsSinceEpoch,
+          'createdAt': s.createdAt.millisecondsSinceEpoch,
+        },
     ];
     final seen = <String>{};
     final edges = <Map<String, String>>[];
@@ -374,13 +396,28 @@ class MainController extends ChangeNotifier {
         if (seen.add(key)) edges.add({'a': a, 'b': b});
       }
     });
-    await WindowController.create(
+    return {'notes': notes, 'edges': edges};
+  }
+
+  /// 전체 보기 창: 모든 메모(열림+서랍)를 묶음 + 그 외로 정리해 한눈에.
+  Future<void> openOverview() async {
+    final wc = await WindowController.create(
       WindowConfiguration(
         hiddenAtLaunch: true,
-        arguments:
-            jsonEncode({'kind': 'graph', 'nodes': nodes, 'edges': edges}),
+        arguments: jsonEncode({'kind': 'overview', ..._overviewData()}),
       ),
     );
+    _overviewWin = wc;
+  }
+
+  /// 상태 변화 시 열려있는 전체 보기 창에 최신 데이터 push (껐다 켤 필요 없게).
+  void _pushOverview() {
+    final wc = _overviewWin;
+    if (wc == null) return;
+    wc.invokeMethod('refresh', jsonEncode(_overviewData())).catchError((_) {
+      _overviewWin = null; // 창이 닫혔으면 추적 해제
+      return null;
+    });
   }
 
   /// "내가 한 일" 보고 창 열기 (로컬 집계).
