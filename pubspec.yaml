@@ -70,6 +70,10 @@ flutter:
 
   assets:
     - assets/icons/tray.png
+    # 온디바이스 임베딩 모델(intfloat/multilingual-e5-small, MIT). 앱 번들에 동봉 →
+    # 첫 실행부터 오프라인 AI 검색/연결 동작. 빌드 시 models/ 에 존재해야 함(VCS 제외).
+    - models/e5_int8.onnx
+    - models/e5_tokenizer.json
 
   # To add assets to your application, add an assets section, like this:
   # assets:

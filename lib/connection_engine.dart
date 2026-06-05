@@ -52,16 +52,34 @@ class ConnectionEngine {
     if (_triedModel) return false;
     _triedModel = true;
     try {
-      final dir = '${Platform.environment['HOME']}/Documents';
-      if (!File('$dir/e5_int8.onnx').existsSync()) return false;
-      _embedder = OnnxEmbedder()..init('$dir/e5_int8.onnx');
-      _tok = UnigramTokenizer()..load('$dir/e5_tokenizer.json');
+      final paths = _resolveModelPaths();
+      if (paths == null) return false;
+      _embedder = OnnxEmbedder()..init(paths.$1);
+      _tok = UnigramTokenizer()..load(paths.$2);
       return true;
     } catch (_) {
       _embedder = null;
       _tok = null;
       return false;
     }
+  }
+
+  /// 모델/토크나이저 경로 해석. (onnx경로, 토크나이저경로) 또는 둘 다 없으면 null.
+  /// 1) 앱 번들에 동봉된 모델(출시 경로) → flutter_assets/models/.
+  /// 2) 폴백: ~/Documents 에 직접 둔 모델(개발 중 / 사용자가 교체할 때).
+  (String, String)? _resolveModelPaths() {
+    // .app/Contents/MacOS/noteez → .app/Contents
+    final contents = File(Platform.resolvedExecutable).parent.parent.path;
+    final bundled =
+        '$contents/Frameworks/App.framework/Resources/flutter_assets/models';
+    if (File('$bundled/e5_int8.onnx').existsSync()) {
+      return ('$bundled/e5_int8.onnx', '$bundled/e5_tokenizer.json');
+    }
+    final home = Platform.environment['HOME'];
+    if (home != null && File('$home/Documents/e5_int8.onnx').existsSync()) {
+      return ('$home/Documents/e5_int8.onnx', '$home/Documents/e5_tokenizer.json');
+    }
+    return null;
   }
 
   /// 메모 임베딩 갱신. 텍스트 안 바뀌었으면(hash 동일) 스킵.
