@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 
+import '../app_theme.dart';
 import '../date_util.dart';
 import '../ipc.dart';
 import '../sticky_palette.dart';
@@ -20,7 +21,7 @@ class OverviewWindowApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: '전체 보기',
-      theme: ThemeData(useMaterial3: true),
+      theme: noteezTheme(),
       home: OverviewWindow(notes: notes, edges: edges),
     );
   }
@@ -42,8 +43,7 @@ class OverviewWindow extends StatefulWidget {
 class _OverviewWindowState extends State<OverviewWindow> {
   static const _main =
       WindowMethodChannel(kMainChannel, mode: ChannelMode.unidirectional);
-  static const Color _accent = Color(0xFFB58236);
-  static const Color _bg = Color(0xFFFBFAF6);
+  static const Color _accent = AppColors.accent; // 시그니처 허니 앰버
 
   final DateTime _now = DateTime.now();
   String _filter = '';
@@ -144,14 +144,14 @@ class _OverviewWindowState extends State<OverviewWindow> {
         ungrouped.length;
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: AppColors.bg,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _header(g.clusters.length),
             _controls(),
-            const Divider(height: 1, color: Color(0x11000000)),
+            const Divider(height: 1, color: AppColors.hair),
             Expanded(
               child: (shown == 0)
                   ? _empty()
@@ -182,12 +182,13 @@ class _OverviewWindowState extends State<OverviewWindow> {
         children: [
           const Text('전체 보기',
               style: TextStyle(
-                  fontSize: 23,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5)),
-          const SizedBox(height: 2),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.4,
+                  color: AppColors.ink)),
+          const SizedBox(height: 3),
           Text('메모 $total개 · 묶음 $clusterCount개 · 서랍 $drawer개',
-              style: const TextStyle(fontSize: 12.5, color: Colors.black45)),
+              style: const TextStyle(fontSize: 12.5, color: AppColors.ink3)),
         ],
       ),
     );
@@ -302,7 +303,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
             style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: on ? FontWeight.w700 : FontWeight.w400,
-                color: on ? const Color(0xFF8A6418) : Colors.black54)),
+                color: on ? AppColors.accentInk : AppColors.ink2)),
       ),
     );
   }
@@ -310,13 +311,10 @@ class _OverviewWindowState extends State<OverviewWindow> {
   Widget _clusterCard(List<Map<String, dynamic>> members) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF8),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0x0F000000)),
-        boxShadow: const [
-          BoxShadow(
-              color: Color(0x0F000000), blurRadius: 14, offset: Offset(0, 4)),
-        ],
+        border: Border.all(color: AppColors.border),
+        boxShadow: kCardShadow,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
