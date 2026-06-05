@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app_theme.dart';
 import '../date_util.dart';
 import '../report.dart';
 
@@ -15,7 +18,7 @@ class ReportWindowApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: '리포트',
-      theme: ThemeData(useMaterial3: true),
+      theme: noteezTheme(),
       home: ReportWindow(data: data),
     );
   }
@@ -30,11 +33,18 @@ class ReportWindow extends StatefulWidget {
 }
 
 class _ReportWindowState extends State<ReportWindow> {
-  static const Color _accent = Color(0xFFB58236); // 보고서 액센트(차분한 앰버)
-  static const Color _bg = Color(0xFFFBFAF6);
+  static const Color _accent = AppColors.accent; // 시그니처 허니 앰버
 
   _Period _period = _Period.month;
   final DateTime _now = DateTime.now();
+  bool _copied = false; // "복사됨" 토스트
+  Timer? _copyTimer;
+
+  @override
+  void dispose() {
+    _copyTimer?.cancel();
+    super.dispose();
+  }
 
   PeriodReport get _r => switch (_period) {
         _Period.week => widget.data.week,
@@ -105,8 +115,10 @@ class _ReportWindowState extends State<ReportWindow> {
     final r = _r;
     final bk = _bucketed();
     return Scaffold(
-      backgroundColor: _bg,
-      body: SafeArea(
+      backgroundColor: AppColors.bg,
+      body: Stack(
+        children: [
+          SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -121,31 +133,18 @@ class _ReportWindowState extends State<ReportWindow> {
                     children: [
                       const Text('내가 한 일',
                           style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5)),
-                      const SizedBox(height: 2),
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.4,
+                              color: AppColors.ink)),
+                      const SizedBox(height: 3),
                       Text(_subtitle,
                           style: const TextStyle(
-                              fontSize: 13, color: Colors.black45)),
+                              fontSize: 13, color: AppColors.ink3)),
                     ],
                   ),
                   const Spacer(),
-                  IconButton(
-                    tooltip: '복사',
-                    onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: _asText()));
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('보고서 복사됨'),
-                              duration: Duration(seconds: 1)),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.copy_rounded, size: 18),
-                    color: Colors.black54,
-                  ),
+                  _copyButton(),
                 ],
               ),
             ),
@@ -154,22 +153,14 @@ class _ReportWindowState extends State<ReportWindow> {
               padding: const EdgeInsets.fromLTRB(24, 6, 24, 14),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: SegmentedButton<_Period>(
-                  showSelectedIcon: false,
-                  style: ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    backgroundColor: WidgetStateProperty.resolveWith((s) =>
-                        s.contains(WidgetState.selected)
-                            ? _accent.withValues(alpha: 0.16)
-                            : Colors.transparent),
-                  ),
-                  segments: const [
-                    ButtonSegment(value: _Period.week, label: Text('주')),
-                    ButtonSegment(value: _Period.month, label: Text('월')),
-                    ButtonSegment(value: _Period.quarter, label: Text('분기')),
+                child: Segmented<_Period>(
+                  value: _period,
+                  onChanged: (p) => setState(() => _period = p),
+                  items: const [
+                    (_Period.week, '주'),
+                    (_Period.month, '월'),
+                    (_Period.quarter, '분기'),
                   ],
-                  selected: {_period},
-                  onSelectionChanged: (s) => setState(() => _period = s.first),
                 ),
               ),
             ),
@@ -186,7 +177,7 @@ class _ReportWindowState extends State<ReportWindow> {
                 ],
               ),
             ),
-            const Divider(height: 1, color: Color(0x11000000)),
+            const Divider(height: 1, color: AppColors.hair),
             // ── 본문 ──
             Expanded(
               child: r.completed.isEmpty && r.open.isEmpty
@@ -203,6 +194,77 @@ class _ReportWindowState extends State<ReportWindow> {
                     ),
             ),
           ],
+        ),
+          ),
+          _copyToast(),
+        ],
+      ),
+    );
+  }
+
+  // 복사 버튼 (Material IconButton 대체) — 톤 맞춘 작은 알약.
+  Widget _copyButton() {
+    return Tooltip(
+      message: '복사',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () async {
+          await Clipboard.setData(ClipboardData(text: _asText()));
+          _copyTimer?.cancel();
+          setState(() => _copied = true);
+          _copyTimer = Timer(const Duration(milliseconds: 1300),
+              () => mounted ? setState(() => _copied = false) : null);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: AppColors.fill,
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.copy_rounded, size: 15, color: AppColors.ink2),
+              SizedBox(width: 6),
+              Text('복사',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      color: AppColors.ink2,
+                      fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // "복사됨" 토스트 — 하단 중앙에서 부드럽게 페이드.
+  Widget _copyToast() {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 26,
+      child: IgnorePointer(
+        child: Center(
+          child: AnimatedOpacity(
+            opacity: _copied ? 1 : 0,
+            duration: const Duration(milliseconds: 180),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+              decoration: BoxDecoration(
+                color: const Color(0xF23A3429),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: kCardShadow,
+              ),
+              child: const Text('보고서 복사됨',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500)),
+            ),
+          ),
         ),
       ),
     );
@@ -225,7 +287,7 @@ class _ReportWindowState extends State<ReportWindow> {
         width: 1,
         height: 30,
         margin: const EdgeInsets.symmetric(horizontal: 22),
-        color: const Color(0x11000000),
+        color: AppColors.hair,
       );
 
   // 완료한 일: 기간 단위로 묶어 "성과 목록"처럼. 체크박스 아이콘 없이.
