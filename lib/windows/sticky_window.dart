@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../date_util.dart';
@@ -41,9 +42,11 @@ class StickyWindow extends StatefulWidget {
 class _StickyWindowState extends State<StickyWindow> with WindowListener {
   static const _main =
       WindowMethodChannel(kMainChannel, mode: ChannelMode.unidirectional);
-  static const double _width = 244;
+  static const double _width = 244; // 기본 너비
   static const double _headerH = 30;
   static const double _maxBodyH = 520;
+
+  double _winW = _width; // 현재 창 너비(사용자가 넓히면 유지) — 접기/펴기에도 보존
 
   late Sticky _s = widget.initial;
   late String? _focusId = _isFreshEmpty(widget.initial)
@@ -101,6 +104,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   void onWindowResized() async {
     final sz = await windowManager.getSize();
     if (!mounted) return;
+    _winW = sz.width; // 사용자가 너비를 바꿨으면 반영(우리 setSize는 같은 값이라 무해)
     if (_lastWindowH != null && (sz.height - _lastWindowH!).abs() > 8) {
       _userSized = true;
       if (!_s.collapsed) _expandedH = sz.height; // 수동 크기도 기억
@@ -109,7 +113,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
 
   Future<void> _setH(double h) async {
     _lastWindowH = h;
-    await windowManager.setSize(Size(_width, h));
+    await windowManager.setSize(Size(_winW, h)); // 너비는 현재 값 유지(접기/펴기 불변)
   }
 
   void _togglePin() {
@@ -182,7 +186,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
       // 네이티브 setSize 는 비싸서 디바운스. 글자/블록은 즉시 뜨고 창은 살짝 뒤에.
       _resizeTimer?.cancel();
       _resizeTimer = Timer(const Duration(milliseconds: 70), () {
-        windowManager.setSize(Size(_width, target));
+        windowManager.setSize(Size(_winW, target)); // 너비 유지, 높이만 맞춤
       });
     });
   }
@@ -346,7 +350,13 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   @override
   Widget build(BuildContext context) {
     _scheduleResize();
-    return MouseRegion(
+    return CallbackShortcuts(
+      bindings: {
+        // ⌘. : 접기/펴기 토글 (편집 중에도 동작 — 블록 필드가 안 쓰는 키라 위로 전파)
+        const SingleActivator(LogicalKeyboardKey.period, meta: true):
+            _toggleCollapse,
+      },
+      child: MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
       child: Material(
@@ -402,6 +412,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
               ),
           ],
         ),
+      ),
       ),
       ),
     );
@@ -477,7 +488,8 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                     () => setState(() => _showColors = !_showColors)),
                 _iconBtn(
                     _s.collapsed ? Icons.unfold_more : Icons.unfold_less,
-                    _toggleCollapse),
+                    _toggleCollapse,
+                    _s.collapsed ? '펴기  ⌘.' : '접기  ⌘.'),
                 _iconBtn(_s.pinned ? Icons.push_pin : Icons.push_pin_outlined,
                     _togglePin),
                 _iconBtn(Icons.delete_outline, _delete),
@@ -618,8 +630,8 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     );
   }
 
-  Widget _iconBtn(IconData icon, VoidCallback onTap) {
-    return InkWell(
+  Widget _iconBtn(IconData icon, VoidCallback onTap, [String? tooltip]) {
+    final btn = InkWell(
       onTap: onTap,
       customBorder: const CircleBorder(),
       child: Padding(
@@ -627,5 +639,6 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
         child: Icon(icon, size: 16, color: Colors.black54),
       ),
     );
+    return tooltip == null ? btn : Tooltip(message: tooltip, child: btn);
   }
 }
