@@ -49,3 +49,6 @@ app.*.map.json
 
 # OMC local agent state
 /.omc/
+
+# OMC scheduled task lock
+.claude/scheduled_tasks.lock
