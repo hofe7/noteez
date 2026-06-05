@@ -42,7 +42,6 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   int _selected = 0; // 검색 결과 키보드 선택 인덱스
   final ScrollController _scroll = ScrollController();
   bool _split = false; // 관련 표시 방식: false=컴팩트(하단), true=분할(우측 패널)
-  List<List<Map<String, dynamic>>> _clusters = const []; // 빈 검색=둘러보기
   String? _panelId; // 관련 패널이 보여줄 대상 메모 id (선택/hover 따라감)
 
   static const double _rowExtent = 46; // 결과 행 고정 높이(스크롤 계산용)
@@ -147,7 +146,6 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   void _onOpen() {
     _q.clear();
     _query = '';
-    _clusters = mainController.clusters(); // 둘러보기용 묶음 스냅샷
     _panelId = null;
     setState(() {
       _capture = false;
@@ -571,9 +569,9 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
     _focus.requestFocus();
   }
 
-  // 본문 좌측(또는 단독): 둘러보기(빈 검색) = 묶음, 아니면 결과 목록.
+  // 빈 검색 = 최근 메모(런처답게). 묶음 둘러보기/정리는 전체 보기(⌘⇧G)가 담당.
+  // 타이핑 시 = 정확 일치 + "AI 관련" 구역. (선택 메모의 '같은 묶음'은 패널로 유지.)
   Widget _mainList(List<Sticky> results) {
-    if (_browsing) return _clusterBrowse();
     if (results.isEmpty && !_hasCreateRow) return _emptyState();
     final children = <Widget>[];
     for (var i = 0; i < _exactCount && i < results.length; i++) {
@@ -622,45 +620,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
         ),
       );
 
-  // 빈 검색 = 묶음 둘러보기. 묶음이 없으면 최근 메모로 폴백.
-  Widget _clusterBrowse() {
-    if (_clusters.isEmpty) {
-      if (_results.isEmpty) return _emptyState();
-      return ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        itemExtent: _rowExtent,
-        itemCount: _results.length,
-        itemBuilder: (_, i) => _resultTile(_results[i], i),
-      );
-    }
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 10),
-      children: [for (final c in _clusters) _clusterGroup(c)],
-    );
-  }
-
-  // 묶음 한 덩어리: 대표(허브) 헤더 + 나머지 멤버.
-  Widget _clusterGroup(List<Map<String, dynamic>> members) {
-    final hub = members.first;
-    final List<Map<String, dynamic>> rest =
-        members.length > 1 ? members.sublist(1) : const [];
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0x05000000),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _noteRow(hub, bold: true, trailing: _countBadge(members.length)),
-          for (final m in rest) _noteRow(m, indent: true),
-        ],
-      ),
-    );
-  }
-
-  // 메모 한 줄(색칩 + 미리보기). 클릭 → 그 메모 소환.
+  // 메모 한 줄(색칩 + 미리보기). 클릭 → 그 메모 소환. (관련 패널에서 사용)
   Widget _noteRow(Map<String, dynamic> m,
       {bool bold = false, bool indent = false, Widget? trailing}) {
     return MouseRegion(
