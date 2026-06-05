@@ -28,6 +28,28 @@ cp -R "$APP_SRC" "$STAGE/$APP_NAME.app"
 ln -s /Applications "$STAGE/Applications"
 cp THIRD_PARTY_LICENSES.md "$STAGE/Licenses.txt" 2>/dev/null || true
 
+# Unsigned-app open instructions (no Apple Developer ID yet → Gatekeeper blocks
+# double-click on first run).
+cat > "$STAGE/여는 법.txt" <<'TXT'
+Noteez 설치 / 처음 여는 법
+===========================
+
+1. Noteez 를 Applications 폴더로 드래그하세요.
+
+2. 처음 실행할 때 (둘 중 하나):
+   • Applications 에서 Noteez 우클릭 → "열기" → 다시 "열기"
+   • 또는 시스템 설정 → 개인정보 보호 및 보안 → "확인 없이 열기"
+   • 또는 터미널:
+       xattr -dr com.apple.quarantine /Applications/Noteez.app
+
+   (아직 Apple 공증을 받지 않아 처음 한 번만 필요합니다.)
+
+3. Noteez 는 메뉴바 앱입니다 — 독에 아이콘이 없어요.
+   메뉴바의 스티커 아이콘, 또는 단축키로 씁니다:
+     ⌘⇧N  새 메모      ⌘⇧Space  빠른 캡처
+     ⌘⇧K  검색         ⌘⇧G      전체 보기
+TXT
+
 echo "==> hdiutil create"
 hdiutil create -volname "$VOL" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
