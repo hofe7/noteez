@@ -176,26 +176,19 @@ Sticky makeSticky({
   );
 }
 
-/// 첫 실행 시 보여줄 시드(인메모리). Drift 붙기 전까지만.
+/// 첫 실행 시 책상에 놓이는 환영 메모 1장. 지우면 깨끗한 빈 화면.
+/// 데모 데이터가 아니라 핵심 동작을 알려주는 진짜 안내 — 익히면 체크하고 버리면 됨.
 List<Sticky> seedStickies() => [
       makeSticky(
-        x: 140,
-        y: 140,
-        colorIndex: 0,
-        blocks: [
-          textBlock('고객사 A 미팅'),
-          todoBlock('Redis 캐시 구조 옵션 정리'),
-          todoBlock('견적서 보내기', true),
-        ],
-      ),
-      makeSticky(
-        x: 460,
-        y: 220,
+        x: 320,
+        y: 180,
         colorIndex: 2,
         blocks: [
-          textBlock('Noteez'),
-          textBlock('그냥 적어. 필요할 때 찾아준다.'),
-          textBlock('[] 로 할 일, 클릭으로 완료'),
+          textBlock('Noteez 👋'),
+          textBlock('그냥 적어. 필요할 때 찾아줄게.'),
+          todoBlock('[] 치면 할 일 — 클릭으로 완료'),
+          todoBlock('⌘⇧Space 어디서든 빠르게 캡처'),
+          todoBlock('⌘⇧K 검색 · ⌘⇧G 전체 보기'),
         ],
       ),
     ];

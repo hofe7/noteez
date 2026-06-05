@@ -28,5 +28,8 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- 메뉴바 액세서리 앱: 독 아이콘·앱 스위처에서 숨김. 진입점은 메뉴바 아이콘 + 글로벌 핫키. -->
+	<key>LSUIElement</key>
+	<true/>
 </dict>
 </plist>
