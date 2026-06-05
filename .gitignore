@@ -52,3 +52,6 @@ app.*.map.json
 
 # OMC scheduled task lock
 .claude/scheduled_tasks.lock
+
+# Release artifacts
+/dist/
