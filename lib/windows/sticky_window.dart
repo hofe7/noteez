@@ -44,11 +44,17 @@ class StickyWindow extends StatefulWidget {
 class _StickyWindowState extends State<StickyWindow> with WindowListener {
   static const _main =
       WindowMethodChannel(kMainChannel, mode: ChannelMode.unidirectional);
+  // 네이티브(AppDelegate)가 ⌘V+이미지 감지 시 PNG 바이트를 보내는 채널.
+  static const _pasteChannel = MethodChannel('noteez/paste');
   static const double _width = 244; // 기본 너비
   static const double _headerH = 30;
   static const double _maxBodyH = 520;
 
   double _winW = _width; // 현재 창 너비(사용자가 넓히면 유지) — 접기/펴기에도 보존
+
+  // 네이티브 ⌘V 텍스트 붙여넣기: 신호가 틱하면 포커스된 BlockField가 _pasteText를 삽입.
+  final ValueNotifier<int> _pasteSignal = ValueNotifier(0);
+  String _pasteText = '';
 
   late Sticky _s = widget.initial;
   late String? _focusId = _isFreshEmpty(widget.initial)
@@ -77,6 +83,24 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   void initState() {
     super.initState();
     windowManager.addListener(this);
+    // ⌘V 이미지 붙여넣기: macOS는 포커스된 텍스트필드의 ⌘V를 네이티브가 통째로 처리해
+    // Flutter 키/인텐트로 안 옴. 그래서 네이티브(AppDelegate)가 ⌘V+클립보드 이미지를
+    // 감지해 이 채널로 PNG 바이트를 넘긴다 → 포커스된 블록 뒤에 이미지 삽입.
+    _pasteChannel.setMethodCallHandler((call) async {
+      if (!mounted) return null;
+      if (call.method == 'pasteImage') {
+        final bytes = call.arguments as Uint8List;
+        final idx = _focusId == null
+            ? _s.blocks.length - 1
+            : _s.blocks.indexWhere((b) => b.id == _focusId);
+        await _insertImage(idx < 0 ? _s.blocks.length - 1 : idx, bytes);
+      } else if (call.method == 'pasteText') {
+        // 포커스된 블록 필드가 커서 위치에 삽입(아래 _pasteText 신호 구독).
+        _pasteText = call.arguments as String;
+        _pasteSignal.value++;
+      }
+      return null;
+    });
     // 메인→이 창 단일 메시지 채널: 'focusEditor' 오면 마지막 줄에 커서.
     WindowController.fromCurrentEngine().then((c) {
       c.setWindowMethodHandler((call) async {
@@ -343,11 +367,42 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     await windowManager.close();
   }
 
-  // ⌘V: 클립보드에 이미지가 있으면 afterIndex 다음에 이미지 블록 삽입.
-  // 텍스트만 있으면 no-op(텍스트 붙여넣기는 필드가 이미 처리).
-  Future<void> _pasteImage(int afterIndex) async {
-    final Uint8List? bytes = await Pasteboard.image;
+  // 헤더 버튼: 클립보드 이미지를 직접 읽어 삽입(키 가로채기 불필요 → 확실히 동작).
+  // 이미지 데이터(앱 복사·⌃⌘⇧4 스샷) 또는 이미지 파일(Finder PNG ⌘C) 둘 다.
+  Future<void> _pasteFromClipboard() async {
+    Uint8List? bytes = await Pasteboard.image;
+    if (bytes == null || bytes.isEmpty) {
+      List<String> files = const [];
+      try {
+        files = await Pasteboard.files();
+      } catch (_) {}
+      for (final p in files) {
+        final l = p.toLowerCase();
+        if (l.endsWith('.png') ||
+            l.endsWith('.jpg') ||
+            l.endsWith('.jpeg') ||
+            l.endsWith('.gif') ||
+            l.endsWith('.webp') ||
+            l.endsWith('.heic') ||
+            l.endsWith('.tiff') ||
+            l.endsWith('.bmp')) {
+          try {
+            bytes = await File(p).readAsBytes();
+          } catch (_) {}
+          break;
+        }
+      }
+    }
     if (bytes == null || bytes.isEmpty || !mounted) return;
+    final idx = _focusId == null
+        ? _s.blocks.length - 1
+        : _s.blocks.indexWhere((b) => b.id == _focusId);
+    await _insertImage(idx < 0 ? _s.blocks.length - 1 : idx, bytes);
+  }
+
+  // 붙여넣은 이미지 바이트를 컨테이너에 저장하고 afterIndex 다음에 이미지 블록 삽입.
+  Future<void> _insertImage(int afterIndex, Uint8List bytes) async {
+    if (bytes.isEmpty || !mounted) return;
     final dir = Directory(
         '${Platform.environment['HOME']}/Documents/noteez_images');
     if (!dir.existsSync()) dir.createSync(recursive: true);
@@ -372,6 +427,8 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   @override
   void dispose() {
     windowManager.removeListener(this);
+    _pasteChannel.setMethodCallHandler(null);
+    _pasteSignal.dispose();
     _saveTimer?.cancel();
     _resizeTimer?.cancel();
     super.dispose();
@@ -468,7 +525,8 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
               onArrowUp: (col) => _onArrowUp(i, col),
               onArrowDown: (col) => _onArrowDown(i, col),
               onToggleType: () => _toggleType(i),
-              onPasteImage: () => _pasteImage(i),
+              pasteSignal: _pasteSignal,
+              pasteText: () => _pasteText,
               focusColumn: _s.blocks[i].id == _focusId ? _focusColumn : null,
               focusTick: _s.blocks[i].id == _focusId ? _focusTick : 0,
             ),
@@ -570,6 +628,8 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                   child: Icon(Icons.push_pin, size: 13, color: Colors.black38),
                 ),
               if (_hovering) ...[
+                _iconBtn(Icons.image_outlined, _pasteFromClipboard,
+                    '클립보드 이미지 붙이기'),
                 _iconBtn(Icons.palette_outlined,
                     () => setState(() => _showColors = !_showColors)),
                 _iconBtn(

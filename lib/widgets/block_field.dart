@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -15,7 +16,9 @@ class BlockField extends StatefulWidget {
   final ValueChanged<int> onArrowUp; // 인자 = 현재 가로 위치(컬럼)
   final ValueChanged<int> onArrowDown;
   final VoidCallback onToggleType; // ⌘L: 텍스트↔체크박스 토글
-  final VoidCallback? onPasteImage; // ⌘V: 클립보드에 이미지가 있으면 이미지 블록 삽입
+  // 네이티브 ⌘V 텍스트 붙여넣기: 신호가 틱하면 포커스된 필드만 pasteText()를 커서에 삽입.
+  final ValueListenable<int>? pasteSignal;
+  final String Function()? pasteText;
   final int? focusColumn; // 포커스 시 둘 위치(null=끝)
   final int focusTick; // 값 바뀌면(같은 shouldFocus라도) 다시 포커스
 
@@ -30,7 +33,8 @@ class BlockField extends StatefulWidget {
     required this.onArrowUp,
     required this.onArrowDown,
     required this.onToggleType,
-    this.onPasteImage,
+    this.pasteSignal,
+    this.pasteText,
     this.focusColumn,
     this.focusTick = 0,
   });
@@ -62,7 +66,10 @@ class _BlockFieldState extends State<BlockField> {
       return KeyEventResult.handled;
     }
     // 첫 줄에서 ↑ = 이전 블록, 마지막 줄에서 ↓ = 다음 블록.
-    if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.arrowUp) {
+    // Shift 누르면 통과 → 텍스트 선택(드래그) 동작 보존.
+    if (e is KeyDownEvent &&
+        e.logicalKey == LogicalKeyboardKey.arrowUp &&
+        !HardwareKeyboard.instance.isShiftPressed) {
       final sel = _c.selection.baseOffset;
       final before = (sel <= 0) ? '' : _c.text.substring(0, sel);
       if (!before.contains('\n')) {
@@ -70,7 +77,9 @@ class _BlockFieldState extends State<BlockField> {
         return KeyEventResult.handled;
       }
     }
-    if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.arrowDown) {
+    if (e is KeyDownEvent &&
+        e.logicalKey == LogicalKeyboardKey.arrowDown &&
+        !HardwareKeyboard.instance.isShiftPressed) {
       final sel = _c.selection.baseOffset;
       final after = (sel < 0 || sel > _c.text.length) ? '' : _c.text.substring(sel);
       if (!after.contains('\n')) {
@@ -78,20 +87,30 @@ class _BlockFieldState extends State<BlockField> {
         return KeyEventResult.handled;
       }
     }
+    // Tab = 들여쓰기. 탭 문자는 탭 스톱이 없어 한 칸처럼 보이므로 스페이스 4칸 삽입.
+    // 기본 동작(다음 위젯으로 포커스 이동)을 막는다.
+    if (e is KeyDownEvent &&
+        e.logicalKey == LogicalKeyboardKey.tab &&
+        !HardwareKeyboard.instance.isShiftPressed) {
+      const indent = '    '; // 스페이스 4칸
+      final sel = _c.selection;
+      final base = (sel.isValid && sel.start >= 0)
+          ? sel
+          : TextSelection.collapsed(offset: _c.text.length);
+      final nt = _c.text.replaceRange(base.start, base.end, indent);
+      _c.value = TextEditingValue(
+        text: nt,
+        selection: TextSelection.collapsed(offset: base.start + indent.length),
+      );
+      widget.onChanged(nt);
+      return KeyEventResult.handled;
+    }
     // ⌘L: 현재 줄 텍스트↔체크박스 토글
     if (e is KeyDownEvent &&
         e.logicalKey == LogicalKeyboardKey.keyL &&
         HardwareKeyboard.instance.isMetaPressed) {
       widget.onToggleType();
       return KeyEventResult.handled;
-    }
-    // ⌘V: 클립보드에 이미지가 있는지 부모가 비동기로 확인 → 있으면 이미지 블록 삽입.
-    // ignored 로 통과시켜 텍스트 붙여넣기는 그대로 동작(이미지뿐이면 텍스트는 빈값).
-    if (e is KeyDownEvent &&
-        e.logicalKey == LogicalKeyboardKey.keyV &&
-        HardwareKeyboard.instance.isMetaPressed) {
-      widget.onPasteImage?.call();
-      return KeyEventResult.ignored;
     }
     return KeyEventResult.ignored;
   }
@@ -120,6 +139,24 @@ class _BlockFieldState extends State<BlockField> {
   void initState() {
     super.initState();
     if (widget.shouldFocus) _focusSoon();
+    widget.pasteSignal?.addListener(_onPasteSignal);
+  }
+
+  // 네이티브 ⌘V 텍스트 붙여넣기 신호. 포커스된 필드만 커서 위치에 삽입.
+  void _onPasteSignal() {
+    if (!_f.hasFocus) return;
+    final t = widget.pasteText?.call();
+    if (t == null || t.isEmpty) return;
+    final sel = _c.selection;
+    final base = (sel.isValid && sel.start >= 0)
+        ? sel
+        : TextSelection.collapsed(offset: _c.text.length);
+    final nt = _c.text.replaceRange(base.start, base.end, t);
+    _c.value = TextEditingValue(
+      text: nt,
+      selection: TextSelection.collapsed(offset: base.start + t.length),
+    );
+    widget.onChanged(nt);
   }
 
   @override
@@ -143,6 +180,7 @@ class _BlockFieldState extends State<BlockField> {
 
   @override
   void dispose() {
+    widget.pasteSignal?.removeListener(_onPasteSignal);
     _c.dispose();
     _f.dispose();
     super.dispose();
