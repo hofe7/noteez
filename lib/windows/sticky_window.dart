@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pasteboard/pasteboard.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../date_util.dart';
@@ -214,6 +216,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     blocks[i] = switch (block) {
       TextBlock b => b.copyWith(text: text),
       TodoBlock b => b.copyWith(text: text),
+      ImageBlock b => b, // 이미지엔 텍스트 입력이 오지 않음
     };
     _apply(_s.copyWith(blocks: blocks));
   }
@@ -269,6 +272,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     blocks[i] = switch (block) {
       TextBlock b => TodoBlock(id: b.id, text: b.text),
       TodoBlock b => TextBlock(id: b.id, text: b.text),
+      ImageBlock b => b, // 이미지는 토글 대상 아님
     };
     _apply(_s.copyWith(blocks: blocks), focusId: block.id);
   }
@@ -337,6 +341,32 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     _saveTimer?.cancel();
     await _main.invokeMethod('deleteSticky', _s.id);
     await windowManager.close();
+  }
+
+  // ⌘V: 클립보드에 이미지가 있으면 afterIndex 다음에 이미지 블록 삽입.
+  // 텍스트만 있으면 no-op(텍스트 붙여넣기는 필드가 이미 처리).
+  Future<void> _pasteImage(int afterIndex) async {
+    final Uint8List? bytes = await Pasteboard.image;
+    if (bytes == null || bytes.isEmpty || !mounted) return;
+    final dir = Directory(
+        '${Platform.environment['HOME']}/Documents/noteez_images');
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    final file =
+        File('${dir.path}/${DateTime.now().microsecondsSinceEpoch}.png');
+    await file.writeAsBytes(bytes, flush: true);
+    if (!mounted) return;
+    final blocks = List<Block>.of(_s.blocks);
+    blocks.insert((afterIndex + 1).clamp(0, blocks.length),
+        imageBlock(file.path));
+    _apply(_s.copyWith(blocks: blocks));
+  }
+
+  // 블록 제거(이미지 × 등). 다 비면 빈 텍스트 한 줄을 남긴다.
+  void _removeBlock(int i) {
+    if (i < 0 || i >= _s.blocks.length) return;
+    final blocks = List<Block>.of(_s.blocks)..removeAt(i);
+    if (blocks.isEmpty) blocks.add(textBlock());
+    _apply(_s.copyWith(blocks: blocks));
   }
 
   @override
@@ -424,21 +454,77 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
       children: [
         if (_showColors) _colorRow(),
         for (var i = 0; i < _s.blocks.length; i++)
-          BlockField(
-            key: ValueKey(_s.blocks[i].id),
-            block: _s.blocks[i],
-            shouldFocus: _s.blocks[i].id == _focusId,
-            onChanged: (t) => _onBlockChanged(i, t),
-            onEnter: () => _onEnter(i),
-            onBackspaceEmpty: () => _onBackspaceEmpty(i),
-            onToggle: (v) => _toggle(i, v),
-            onArrowUp: (col) => _onArrowUp(i, col),
-            onArrowDown: (col) => _onArrowDown(i, col),
-            onToggleType: () => _toggleType(i),
-            focusColumn: _s.blocks[i].id == _focusId ? _focusColumn : null,
-            focusTick: _s.blocks[i].id == _focusId ? _focusTick : 0,
-          ),
+          if (_s.blocks[i] is ImageBlock)
+            _imageBlockWidget(_s.blocks[i] as ImageBlock, i)
+          else
+            BlockField(
+              key: ValueKey(_s.blocks[i].id),
+              block: _s.blocks[i],
+              shouldFocus: _s.blocks[i].id == _focusId,
+              onChanged: (t) => _onBlockChanged(i, t),
+              onEnter: () => _onEnter(i),
+              onBackspaceEmpty: () => _onBackspaceEmpty(i),
+              onToggle: (v) => _toggle(i, v),
+              onArrowUp: (col) => _onArrowUp(i, col),
+              onArrowDown: (col) => _onArrowDown(i, col),
+              onToggleType: () => _toggleType(i),
+              onPasteImage: () => _pasteImage(i),
+              focusColumn: _s.blocks[i].id == _focusId ? _focusColumn : null,
+              focusTick: _s.blocks[i].id == _focusId ? _focusTick : 0,
+            ),
       ],
+    );
+  }
+
+  // 붙여넣은 이미지 블록: 둥근 썸네일, 스티커 너비에 맞춤. hover 시 삭제(×).
+  Widget _imageBlockWidget(ImageBlock b, int i) {
+    return Padding(
+      key: ValueKey(b.id),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          children: [
+            Image.file(
+              File(b.path),
+              fit: BoxFit.fitWidth,
+              width: double.infinity,
+              // 이미지는 비동기 디코드 → 로드되면 창 높이를 한 번 다시 맞춤.
+              frameBuilder: (_, child, frame, wasSync) {
+                if (frame != null && !wasSync) {
+                  WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => mounted ? _scheduleResize() : null);
+                }
+                return child;
+              },
+              errorBuilder: (_, _, _) => Container(
+                height: 60,
+                alignment: Alignment.center,
+                color: const Color(0x11000000),
+                child: const Text('이미지를 불러올 수 없어요',
+                    style: TextStyle(fontSize: 11, color: Colors.black38)),
+              ),
+            ),
+            if (_hovering)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: GestureDetector(
+                  onTap: () => _removeBlock(i),
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: const BoxDecoration(
+                      color: Color(0x99000000),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.close,
+                        size: 13, color: Colors.white),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
