@@ -138,11 +138,27 @@ v4  "내가 한 일" 보고          ← 체크박스 데이터로
 
 기술은 commodity. 진짜 실력은 **언제 입을 다물지(절제)**.
 
-## 실행
+## 실행 (개발)
 
 ```bash
 flutter run -d macos
 ```
+
+## 설치 (배포본 DMG)
+
+`tool/make_dmg.sh` 로 `dist/Noteez.dmg` 를 만든다. 아직 **미서명/미노타라이즈**라
+(Apple Developer ID 미보유) 받는 쪽에서 처음 한 번 Gatekeeper를 통과시켜야 한다:
+
+1. DMG 열고 **Noteez** 를 **Applications** 로 드래그.
+2. 처음 실행: **우클릭 → 열기 → "열기"** (더블클릭은 차단됨), 또는 시스템 설정 →
+   개인정보 보호 및 보안에서 "확인 없이 열기".
+3. 또는 터미널 한 줄: `xattr -dr com.apple.quarantine /Applications/Noteez.app`
+
+> 메뉴바 앱이라 독에 아이콘이 없다 — 실행 후 **메뉴바 스티커 아이콘**과
+> 글로벌 단축키(⌘⇧N 새 메모, ⌘⇧Space 캡처, ⌘⇧K 검색, ⌘⇧G 전체 보기)로 쓴다.
+
+널리 배포할 때가 되면 $99/년 Apple Developer Program으로 codesign + notarize 하면
+이 단계가 사라진다 (코드 변경 없이 `make_dmg.sh` 에 서명 단계만 추가).
 
 ---
 
