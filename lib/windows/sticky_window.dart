@@ -56,6 +56,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   final ValueNotifier<int> _pasteSignal = ValueNotifier(0);
   String _pasteText = '';
 
+
   late Sticky _s = widget.initial;
   late String? _focusId = _isFreshEmpty(widget.initial)
       ? widget.initial.blocks.first.id
@@ -524,6 +525,8 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
               onToggle: (v) => _toggle(i, v),
               onArrowUp: (col) => _onArrowUp(i, col),
               onArrowDown: (col) => _onArrowDown(i, col),
+              isFirst: i == 0,
+              isLast: i == _s.blocks.length - 1,
               onToggleType: () => _toggleType(i),
               pasteSignal: _pasteSignal,
               pasteText: () => _pasteText,

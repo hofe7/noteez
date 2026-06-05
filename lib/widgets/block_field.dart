@@ -15,6 +15,8 @@ class BlockField extends StatefulWidget {
   final ValueChanged<bool> onToggle;
   final ValueChanged<int> onArrowUp; // 인자 = 현재 가로 위치(컬럼)
   final ValueChanged<int> onArrowDown;
+  final bool isFirst; // 첫 블록(맨 위) — ↑ 시 맨 앞으로 커서
+  final bool isLast; // 마지막 블록(맨 아래) — ↓ 시 맨 끝으로 커서
   final VoidCallback onToggleType; // ⌘L: 텍스트↔체크박스 토글
   // 네이티브 ⌘V 텍스트 붙여넣기: 신호가 틱하면 포커스된 필드만 pasteText()를 커서에 삽입.
   final ValueListenable<int>? pasteSignal;
@@ -32,6 +34,8 @@ class BlockField extends StatefulWidget {
     required this.onToggle,
     required this.onArrowUp,
     required this.onArrowDown,
+    this.isFirst = false,
+    this.isLast = false,
     required this.onToggleType,
     this.pasteSignal,
     this.pasteText,
@@ -73,7 +77,12 @@ class _BlockFieldState extends State<BlockField> {
       final sel = _c.selection.baseOffset;
       final before = (sel <= 0) ? '' : _c.text.substring(0, sel);
       if (!before.contains('\n')) {
-        widget.onArrowUp(_column());
+        // 첫 블록의 첫 줄에서 ↑ = 맨 앞으로 커서. 그 외엔 이전 블록으로.
+        if (widget.isFirst) {
+          _c.selection = const TextSelection.collapsed(offset: 0);
+        } else {
+          widget.onArrowUp(_column());
+        }
         return KeyEventResult.handled;
       }
     }
@@ -83,7 +92,13 @@ class _BlockFieldState extends State<BlockField> {
       final sel = _c.selection.baseOffset;
       final after = (sel < 0 || sel > _c.text.length) ? '' : _c.text.substring(sel);
       if (!after.contains('\n')) {
-        widget.onArrowDown(_column());
+        // 마지막 블록의 마지막 줄에서 ↓ = 맨 끝으로 커서. 그 외엔 다음 블록으로.
+        if (widget.isLast) {
+          _c.selection =
+              TextSelection.collapsed(offset: _c.text.length);
+        } else {
+          widget.onArrowDown(_column());
+        }
         return KeyEventResult.handled;
       }
     }
