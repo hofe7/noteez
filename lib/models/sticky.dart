@@ -20,6 +20,8 @@ sealed class Block {
           checked: j['checked'] as bool? ?? false,
           completedAt: j['completedAt'] as int?,
         );
+      case 'image':
+        return ImageBlock(id: j['id'] as String, path: j['path'] as String);
       default:
         return TextBlock(id: j['id'] as String, text: j['text'] as String);
     }
@@ -68,9 +70,20 @@ class TodoBlock extends Block {
       };
 }
 
+/// 붙여넣은 이미지 블록. 바이트는 컨테이너 파일로 저장하고 경로만 보관.
+/// text는 빈 문자열 — 검색/임베딩/보고에는 잡히지 않음(이미지는 의미 텍스트 없음).
+class ImageBlock extends Block {
+  final String path; // 저장된 이미지 파일 절대경로
+  const ImageBlock({required super.id, required this.path}) : super(text: '');
+
+  @override
+  Map<String, dynamic> toJson() => {'type': 'image', 'id': id, 'path': path};
+}
+
 Block textBlock([String text = '']) => TextBlock(id: _uuid.v4(), text: text);
 Block todoBlock([String text = '', bool checked = false]) =>
     TodoBlock(id: _uuid.v4(), text: text, checked: checked);
+Block imageBlock(String path) => ImageBlock(id: _uuid.v4(), path: path);
 
 class Sticky {
   final String id;

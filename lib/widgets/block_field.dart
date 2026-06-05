@@ -15,6 +15,7 @@ class BlockField extends StatefulWidget {
   final ValueChanged<int> onArrowUp; // 인자 = 현재 가로 위치(컬럼)
   final ValueChanged<int> onArrowDown;
   final VoidCallback onToggleType; // ⌘L: 텍스트↔체크박스 토글
+  final VoidCallback? onPasteImage; // ⌘V: 클립보드에 이미지가 있으면 이미지 블록 삽입
   final int? focusColumn; // 포커스 시 둘 위치(null=끝)
   final int focusTick; // 값 바뀌면(같은 shouldFocus라도) 다시 포커스
 
@@ -29,6 +30,7 @@ class BlockField extends StatefulWidget {
     required this.onArrowUp,
     required this.onArrowDown,
     required this.onToggleType,
+    this.onPasteImage,
     this.focusColumn,
     this.focusTick = 0,
   });
@@ -82,6 +84,14 @@ class _BlockFieldState extends State<BlockField> {
         HardwareKeyboard.instance.isMetaPressed) {
       widget.onToggleType();
       return KeyEventResult.handled;
+    }
+    // ⌘V: 클립보드에 이미지가 있는지 부모가 비동기로 확인 → 있으면 이미지 블록 삽입.
+    // ignored 로 통과시켜 텍스트 붙여넣기는 그대로 동작(이미지뿐이면 텍스트는 빈값).
+    if (e is KeyDownEvent &&
+        e.logicalKey == LogicalKeyboardKey.keyV &&
+        HardwareKeyboard.instance.isMetaPressed) {
+      widget.onPasteImage?.call();
+      return KeyEventResult.ignored;
     }
     return KeyEventResult.ignored;
   }
