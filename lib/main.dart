@@ -19,8 +19,8 @@ import 'windows/sticky_window.dart';
 // 임베딩 스파이크 토글 (검증 완료 → false. 연결 기능은 제품에 직접 배선 예정).
 const bool _kEmbedSpike = false;
 
-// 에디터 교체 프로토타입 토글 (super_editor 검증용. 확인 끝나면 false).
-const bool _kEditorProto = true;
+// 에디터 교체 프로토타입 토글 (검증 끝 → false. 실제 스티커가 NoteEditor 사용).
+const bool _kEditorProto = false;
 
 /// 모든 창(메인/스티커)이 main()을 돈다. fromCurrentEngine().arguments 로 구분.
 Future<void> main(List<String> args) async {
