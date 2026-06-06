@@ -308,6 +308,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                                     initial: _s.blocks,
                                     autofocus: widget.focusOnOpen ||
                                         _isFreshEmpty(_s),
+                                    accent: StickyPalette.ink(_s.colorIndex),
                                     onChanged: _onEditorChanged,
                                   ),
                                 ],
