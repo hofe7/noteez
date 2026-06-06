@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_quill/flutter_quill.dart';
+import 'package:flutter_quill/flutter_quill.dart' hide Block;
 
-/// flutter_quill 검증용 프로토타입. 단일 에디터라 줄 넘는 드래그 선택·⌘A·⌘C/⌘V가
-/// 기본으로 되는지, 체크리스트(체크박스)가 인라인으로 되는지 확인. 되면 이걸로
-/// sticky 본문을 교체(블록 JSON ↔ Quill Delta 변환).
+import '../models/sticky.dart';
+import 'note_editor.dart';
+
+/// NoteEditor(스티커 본문 후보) 검증용. 단일 에디터 동작 + 블록 변환을 함께 확인:
+/// 하단 디버그 줄에 onChanged로 나온 블록들을 실시간 표시.
 class EditorPrototypeApp extends StatelessWidget {
   const EditorPrototypeApp({super.key});
 
@@ -27,42 +29,43 @@ class _Proto extends StatefulWidget {
 }
 
 class _ProtoState extends State<_Proto> {
-  late final QuillController _controller;
+  late List<Block> _blocks = [
+    textBlock('첫 줄 — 드래그/Shift 화살표로 줄 넘어 선택, ⌘A 전체 선택'),
+    textBlock('둘째 줄. 그냥 텍스트.'),
+    todoBlock('체크박스 할 일 — 박스 탭하면 토글', false),
+    todoBlock('완료된 할 일', true),
+    textBlock('마지막 줄.'),
+  ];
 
-  @override
-  void initState() {
-    super.initState();
-    final doc = Document()
-      ..insert(
-          0,
-          'Noteez 에디터 프로토타입 (flutter_quill)\n'
-          '첫 줄 — 여기서 아래로 드래그하면 줄을 넘어 선택돼야 해요.\n'
-          '둘째 줄. Shift+↓ 로도 줄 넘는 선택 확인.\n'
-          '셋째 줄. ⌘A 전체 선택 / ⌘C·⌘V 테스트.\n'
-          '체크박스는 아래 툴바의 체크리스트 버튼으로.\n');
-    _controller = QuillController(
-      document: doc,
-      selection: const TextSelection.collapsed(offset: 0),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  String get _summary => _blocks
+      .map((b) => switch (b) {
+            TodoBlock t => '[${t.checked ? "x" : " "}]${t.text}',
+            ImageBlock _ => '(img)',
+            _ => b.text,
+          })
+      .join('  |  ');
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        QuillSimpleToolbar(controller: _controller),
-        const Divider(height: 1),
         Expanded(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            child: QuillEditor.basic(controller: _controller),
+            child: NoteEditor(
+              initial: _blocks,
+              autofocus: true,
+              onChanged: (b) => setState(() => _blocks = b),
+            ),
           ),
+        ),
+        const Divider(height: 1),
+        Container(
+          width: double.infinity,
+          color: const Color(0xFFF3F1EA),
+          padding: const EdgeInsets.all(10),
+          child: Text('블록 ${_blocks.length}개:  $_summary',
+              style: const TextStyle(fontSize: 11, color: Colors.black54)),
         ),
       ],
     );
