@@ -1,6 +1,10 @@
+// SpaceShortcutEvent 등 flutter_quill 단축 API는 @experimental 로 표시돼 있으나
+// 안정 동작이라 의도적으로 사용한다.
+// ignore_for_file: experimental_member_use
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' hide Block;
 
 import '../models/sticky.dart';
@@ -65,6 +69,35 @@ class NoteEditorState extends State<NoteEditor> {
     }
   }
 
+  /// 줄 맨 앞에서 백스페이스 → 그 줄의 블록 포맷(체크리스트/리스트 등) 제거 후
+  /// 일반 빈 줄로. flutter_quill 기본은 문서 맨 처음(offset 0)에서만 블록을 풀고,
+  /// 그 외엔 이전 줄과 병합(=행 삭제)해버린다. 체크박스를 지우면 행이 통째로
+  /// 사라지던 문제를 막는다. (반환 null이면 기본 동작 유지.)
+  KeyEventResult? _onKey(KeyEvent event, Node? node) {
+    if (event is! KeyDownEvent) return null;
+    if (event.logicalKey != LogicalKeyboardKey.backspace) return null;
+    final sel = _controller.selection;
+    if (!sel.isCollapsed) return null;
+    final off = sel.baseOffset;
+    // 줄 맨 앞인가 — 문서 처음이거나 직전 글자가 개행. (줄 경계 offset에서
+    // queryChild가 이전 줄을 돌려줄 수 있어 node 대신 이 방식으로 판별한다.)
+    final atLineStart =
+        off == 0 || _controller.document.getPlainText(off - 1, 1) == '\n';
+    if (!atLineStart) return null;
+    // 현재 줄의 블록 포맷(체크리스트/리스트 등).
+    final blockAttrs = _controller
+        .getSelectionStyle()
+        .attributes
+        .values
+        .where((a) => a.scope == AttributeScope.block)
+        .toList();
+    if (blockAttrs.isEmpty) return null; // 일반 줄 → 기본 백스페이스(이전 줄과 병합)
+    for (final a in blockAttrs) {
+      _controller.formatSelection(Attribute.clone(a, null));
+    }
+    return KeyEventResult.handled;
+  }
+
   void _onChange() {
     final blocks = NoteDelta.toBlocks(_controller.document.toDelta());
     final merged = _mergeCompleted(blocks, _prev);
@@ -111,6 +144,12 @@ class NoteEditorState extends State<NoteEditor> {
         // 바깥 여백은 여기(블록 분할과 무관한 상수)서만 준다 — 블록 상/하 여백은 0.
         padding: const EdgeInsets.symmetric(vertical: 2),
         placeholder: '메모…',
+        // 줄 시작에서 "[]" 또는 "[ ]" + 스페이스 → 체크박스(미체크 todo).
+        // flutter_quill 기본은 단축이 전부 꺼져 있고(표준 리스트에도 체크박스 없음)
+        // 직접 정의한다. 매칭 안 되면 스페이스는 그대로 입력됨.
+        spaceShortcutEvents: noteSpaceShortcuts,
+        // 줄 맨 앞 백스페이스 → 블록 포맷 해제(체크박스 지우면 빈 줄 유지).
+        onKeyPressed: _onKey,
         customStyles: _stickyStyles(context, widget.accent),
         // 체크된 체크리스트 줄(list:checked): 취소선 + 회색만. 줄 높이/여백은
         // 본문 메트릭(_stickyStyles)에서 전부 결정 → 체크/미체크가 픽셀까지 동일.
@@ -127,15 +166,43 @@ class NoteEditorState extends State<NoteEditor> {
   }
 }
 
+/// 체크리스트 입력 단축: 줄 전체가 "[]"(또는 "[ ]")일 때 스페이스를 누르면 그 줄을
+/// 미체크 todo로 바꾼다. flutter_quill의 BlockFormatStyle.todo 핸들러는 비공개라
+/// 공개 컨트롤러 API로 재구현. (디스패처는 줄 텍스트가 character와 정확히 일치할
+/// 때만 호출하므로 줄 시작 전용 + 오발동 없음.)
+SpaceShortcutEvent _todoShortcut(String phrase) => SpaceShortcutEvent(
+      character: phrase,
+      handler: (node, controller) {
+        final base = controller.selection.baseOffset;
+        // 트리거 문구를 지우고(줄이 비워짐) 현재 줄을 체크리스트(미체크)로 포맷.
+        controller.replaceText(base - phrase.length, phrase.length, '', null);
+        controller.updateSelection(
+          TextSelection.collapsed(offset: base - phrase.length),
+          ChangeSource.local,
+        );
+        controller.formatSelection(Attribute.unchecked);
+        return true;
+      },
+    );
+
+/// NoteEditor에 주입하는 스페이스 단축 목록 (현재는 체크박스 2종).
+final List<SpaceShortcutEvent> noteSpaceShortcuts = [
+  _todoShortcut('[]'),
+  _todoShortcut('[ ]'),
+];
+
 // 스티커 본문 스타일: 가벼운 14px + 좁은 줄 간격 + 미니 체크박스(포스트잇 색조).
 // base.merge(부분) 으로 null 필드는 기본 유지 → 완전한 DefaultStyles.
 DefaultStyles _stickyStyles(BuildContext context, Color accent) {
   final base = DefaultStyles.getInstance(context);
+  // 모든 줄에 leadingDistribution 미지정(기본 분배). even을 쓰면 height>1.0에서
+  // 빈 줄(글리프 없음)의 strut 높이가 값 있는 줄과 어긋나(빈 줄이 더 큼) "그냥 개행"
+  // 과 "값 입력한 줄"의 높이가 달라진다. 기본 분배면 빈 줄==값 줄로 일치(본문·체크
+  // 리스트 모두). 체크박스 세로 정렬은 _MiniCheckbox 에서 직접 맞춘다.
   const text = TextStyle(
     fontSize: 14,
     height: 1.3,
     color: Color(0xDE000000), // black87
-    leadingDistribution: TextLeadingDistribution.even,
   );
   // 블록 상/하 여백을 0으로 — 줄 간격은 전적으로 line-height(1.3)가 책임진다.
   // 체크 토글로 체크리스트가 두 블록으로 쪼개져도 블록 경계 여백이 0이라 행 간격
@@ -156,15 +223,13 @@ DefaultStyles _stickyStyles(BuildContext context, Color accent) {
       indentWidthBuilder: (block, context, count, npb) =>
           const HorizontalSpacing(22, 0),
     ),
+    // 플레이스홀더는 본문과 같은 메트릭(even 없음, 여백 0) — 첫 글자 입력 시 줄이
+    // 튀지 않게 한다.
     placeHolder: DefaultTextBlockStyle(
-        const TextStyle(
-            fontSize: 14,
-            height: 1.3,
-            color: Color(0x42000000),
-            leadingDistribution: TextLeadingDistribution.even),
+        const TextStyle(fontSize: 14, height: 1.3, color: Color(0x42000000)),
         base.placeHolder!.horizontalSpacing,
-        base.placeHolder!.verticalSpacing,
-        base.placeHolder!.lineSpacing,
+        tightV,
+        tightLine,
         null),
   ));
 }
