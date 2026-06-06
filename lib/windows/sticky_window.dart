@@ -1,18 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:pasteboard/pasteboard.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../date_util.dart';
+import '../editor/note_editor.dart';
 import '../ipc.dart';
 import '../models/sticky.dart';
 import '../sticky_palette.dart';
-import '../widgets/block_field.dart';
 
 class StickyWindowApp extends StatelessWidget {
   final Sticky initial;
@@ -44,25 +42,15 @@ class StickyWindow extends StatefulWidget {
 class _StickyWindowState extends State<StickyWindow> with WindowListener {
   static const _main =
       WindowMethodChannel(kMainChannel, mode: ChannelMode.unidirectional);
-  // 네이티브(AppDelegate)가 ⌘V+이미지 감지 시 PNG 바이트를 보내는 채널.
-  static const _pasteChannel = MethodChannel('noteez/paste');
   static const double _width = 244; // 기본 너비
   static const double _headerH = 30;
   static const double _maxBodyH = 520;
 
   double _winW = _width; // 현재 창 너비(사용자가 넓히면 유지) — 접기/펴기에도 보존
 
-  // 네이티브 ⌘V 텍스트 붙여넣기: 신호가 틱하면 포커스된 BlockField가 _pasteText를 삽입.
-  final ValueNotifier<int> _pasteSignal = ValueNotifier(0);
-  String _pasteText = '';
-
+  final GlobalKey<NoteEditorState> _editorKey = GlobalKey<NoteEditorState>();
 
   late Sticky _s = widget.initial;
-  late String? _focusId = _isFreshEmpty(widget.initial)
-      ? widget.initial.blocks.first.id
-      : null;
-  int? _focusColumn; // 방향키 이동 시 유지할 가로 위치 (null=끝)
-  int _focusTick = 0; // 빈 영역 탭 등으로 강제 재포커스
   Timer? _saveTimer;
   Timer? _resizeTimer;
   final GlobalKey _bodyKey = GlobalKey();
@@ -84,28 +72,12 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   void initState() {
     super.initState();
     windowManager.addListener(this);
-    // ⌘V 이미지 붙여넣기: macOS는 포커스된 텍스트필드의 ⌘V를 네이티브가 통째로 처리해
-    // Flutter 키/인텐트로 안 옴. 그래서 네이티브(AppDelegate)가 ⌘V+클립보드 이미지를
-    // 감지해 이 채널로 PNG 바이트를 넘긴다 → 포커스된 블록 뒤에 이미지 삽입.
-    _pasteChannel.setMethodCallHandler((call) async {
-      if (!mounted) return null;
-      if (call.method == 'pasteImage') {
-        final bytes = call.arguments as Uint8List;
-        final idx = _focusId == null
-            ? _s.blocks.length - 1
-            : _s.blocks.indexWhere((b) => b.id == _focusId);
-        await _insertImage(idx < 0 ? _s.blocks.length - 1 : idx, bytes);
-      } else if (call.method == 'pasteText') {
-        // 포커스된 블록 필드가 커서 위치에 삽입(아래 _pasteText 신호 구독).
-        _pasteText = call.arguments as String;
-        _pasteSignal.value++;
-      }
-      return null;
-    });
-    // 메인→이 창 단일 메시지 채널: 'focusEditor' 오면 마지막 줄에 커서.
+    // 메인→이 창 단일 메시지 채널: 'focusEditor' 오면 에디터 끝에 커서.
     WindowController.fromCurrentEngine().then((c) {
       c.setWindowMethodHandler((call) async {
-        if (call.method == 'focusEditor' && mounted) _focusLastBlock();
+        if (call.method == 'focusEditor' && mounted) {
+          _editorKey.currentState?.focusEnd();
+        }
         // 전체 보기에서 '서랍에 넣기' → 메인이 상태 갱신 후 창만 닫으라고 요청.
         if (call.method == 'requestClose') {
           _saveTimer?.cancel();
@@ -117,8 +89,6 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchConnection();
       if (_s.pinned) windowManager.setAlwaysOnTop(true);
-      // 검색에서 켜졌으면 바로 입력 가능하도록 마지막 줄 포커스.
-      if (widget.focusOnOpen) _focusLastBlock();
     });
     // 시작 시 임베딩이 아직이면 제안이 비어있으니, 잠시 후 한 번 더 조회.
     Future.delayed(const Duration(milliseconds: 1800), () {
@@ -184,15 +154,17 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     });
   }
 
-  void _apply(Sticky next, {String? focusId}) {
-    setState(() {
-      _s = next.copyWith(updatedAt: DateTime.now());
-      if (focusId != null) {
-        _focusId = focusId;
-        _focusColumn = null; // Enter/Backspace 병합은 끝 위치
-      }
-    });
+  void _apply(Sticky next) {
+    setState(() => _s = next.copyWith(updatedAt: DateTime.now()));
     _persist();
+  }
+
+  // 에디터가 바뀔 때마다: 블록 갱신 + 저장(디바운스) + 창 높이 재조정.
+  // NoteEditor는 자기 표시를 직접 관리하므로 setState 불필요(키로 상태 보존).
+  void _onEditorChanged(List<Block> blocks) {
+    _s = _s.copyWith(blocks: blocks, updatedAt: DateTime.now());
+    _persist();
+    _scheduleResize();
   }
 
   // ── 창 높이를 내용에 맞춤 ──────────────────────────────────
@@ -215,101 +187,6 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
       _resizeTimer = Timer(const Duration(milliseconds: 70), () {
         windowManager.setSize(Size(_winW, target)); // 너비 유지, 높이만 맞춤
       });
-    });
-  }
-
-  // ── 블록 편집 ──────────────────────────────────────────────
-  void _onBlockChanged(int i, String text) {
-    final block = _s.blocks[i];
-    // "[] " 또는 "[ ] " → 체크박스. ("- "는 글머리표라 그냥 텍스트로 둠.)
-    if (block is TextBlock) {
-      String? rest;
-      if (text.startsWith('[] ')) {
-        rest = text.substring(3);
-      } else if (text.startsWith('[ ] ')) {
-        rest = text.substring(4);
-      }
-      if (rest != null) {
-        final blocks = [..._s.blocks];
-        blocks[i] = TodoBlock(id: block.id, text: rest);
-        // 변환 후에도 그 줄에서 이어서 칠 수 있게 포커스 유지.
-        _apply(_s.copyWith(blocks: blocks), focusId: block.id);
-        return;
-      }
-    }
-    final blocks = [..._s.blocks];
-    blocks[i] = switch (block) {
-      TextBlock b => b.copyWith(text: text),
-      TodoBlock b => b.copyWith(text: text),
-      ImageBlock b => b, // 이미지엔 텍스트 입력이 오지 않음
-    };
-    _apply(_s.copyWith(blocks: blocks));
-  }
-
-  void _onEnter(int i) {
-    final nb = textBlock();
-    final blocks = [..._s.blocks]..insert(i + 1, nb);
-    _apply(_s.copyWith(blocks: blocks), focusId: nb.id);
-  }
-
-  void _onBackspaceEmpty(int i) {
-    if (_s.blocks.length <= 1) return;
-    final prevId = i > 0 ? _s.blocks[i - 1].id : _s.blocks[1].id;
-    final blocks = [..._s.blocks]..removeAt(i);
-    _apply(_s.copyWith(blocks: blocks), focusId: prevId);
-  }
-
-  void _onArrowUp(int i, int col) {
-    if (i > 0) {
-      setState(() {
-        _focusId = _s.blocks[i - 1].id;
-        _focusColumn = col;
-      });
-    }
-  }
-
-  void _onArrowDown(int i, int col) {
-    if (i < _s.blocks.length - 1) {
-      setState(() {
-        _focusId = _s.blocks[i + 1].id;
-        _focusColumn = col;
-      });
-    }
-  }
-
-  void _toggle(int i, bool v) {
-    final block = _s.blocks[i];
-    if (block is! TodoBlock) return;
-    final blocks = [..._s.blocks];
-    blocks[i] = v
-        ? block.copyWith(
-            checked: true,
-            completedAt: DateTime.now().millisecondsSinceEpoch,
-          )
-        : block.copyWith(checked: false, clearCompleted: true);
-    _apply(_s.copyWith(blocks: blocks));
-  }
-
-  // ⌘L: 현재 줄 텍스트↔체크박스 토글. 텍스트/id 유지 → 포커스 그대로.
-  void _toggleType(int i) {
-    final block = _s.blocks[i];
-    final blocks = [..._s.blocks];
-    blocks[i] = switch (block) {
-      TextBlock b => TodoBlock(id: b.id, text: b.text),
-      TodoBlock b => TextBlock(id: b.id, text: b.text),
-      ImageBlock b => b, // 이미지는 토글 대상 아님
-    };
-    _apply(_s.copyWith(blocks: blocks), focusId: block.id);
-  }
-
-  // 본문 빈 영역을 눌렀을 때: 마지막 줄 끝으로 커서. focusTick++ 로 이미
-  // 마지막 줄이 포커스 대상이어도(같은 shouldFocus) 강제로 다시 포커스.
-  void _focusLastBlock() {
-    if (_s.blocks.isEmpty) return;
-    setState(() {
-      _focusId = _s.blocks.last.id;
-      _focusColumn = null;
-      _focusTick++;
     });
   }
 
@@ -368,68 +245,9 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     await windowManager.close();
   }
 
-  // 헤더 버튼: 클립보드 이미지를 직접 읽어 삽입(키 가로채기 불필요 → 확실히 동작).
-  // 이미지 데이터(앱 복사·⌃⌘⇧4 스샷) 또는 이미지 파일(Finder PNG ⌘C) 둘 다.
-  Future<void> _pasteFromClipboard() async {
-    Uint8List? bytes = await Pasteboard.image;
-    if (bytes == null || bytes.isEmpty) {
-      List<String> files = const [];
-      try {
-        files = await Pasteboard.files();
-      } catch (_) {}
-      for (final p in files) {
-        final l = p.toLowerCase();
-        if (l.endsWith('.png') ||
-            l.endsWith('.jpg') ||
-            l.endsWith('.jpeg') ||
-            l.endsWith('.gif') ||
-            l.endsWith('.webp') ||
-            l.endsWith('.heic') ||
-            l.endsWith('.tiff') ||
-            l.endsWith('.bmp')) {
-          try {
-            bytes = await File(p).readAsBytes();
-          } catch (_) {}
-          break;
-        }
-      }
-    }
-    if (bytes == null || bytes.isEmpty || !mounted) return;
-    final idx = _focusId == null
-        ? _s.blocks.length - 1
-        : _s.blocks.indexWhere((b) => b.id == _focusId);
-    await _insertImage(idx < 0 ? _s.blocks.length - 1 : idx, bytes);
-  }
-
-  // 붙여넣은 이미지 바이트를 컨테이너에 저장하고 afterIndex 다음에 이미지 블록 삽입.
-  Future<void> _insertImage(int afterIndex, Uint8List bytes) async {
-    if (bytes.isEmpty || !mounted) return;
-    final dir = Directory(
-        '${Platform.environment['HOME']}/Documents/noteez_images');
-    if (!dir.existsSync()) dir.createSync(recursive: true);
-    final file =
-        File('${dir.path}/${DateTime.now().microsecondsSinceEpoch}.png');
-    await file.writeAsBytes(bytes, flush: true);
-    if (!mounted) return;
-    final blocks = List<Block>.of(_s.blocks);
-    blocks.insert((afterIndex + 1).clamp(0, blocks.length),
-        imageBlock(file.path));
-    _apply(_s.copyWith(blocks: blocks));
-  }
-
-  // 블록 제거(이미지 × 등). 다 비면 빈 텍스트 한 줄을 남긴다.
-  void _removeBlock(int i) {
-    if (i < 0 || i >= _s.blocks.length) return;
-    final blocks = List<Block>.of(_s.blocks)..removeAt(i);
-    if (blocks.isEmpty) blocks.add(textBlock());
-    _apply(_s.copyWith(blocks: blocks));
-  }
-
   @override
   void dispose() {
     windowManager.removeListener(this);
-    _pasteChannel.setMethodCallHandler(null);
-    _pasteSignal.dispose();
     _saveTimer?.cancel();
     _resizeTimer?.cancel();
     super.dispose();
@@ -475,12 +293,25 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                         cursor: SystemMouseCursors.text, // 빈 곳도 I-beam
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTap: _focusLastBlock,
+                          // 본문 빈 영역 탭 → 에디터 끝에 커서. (에디터 위 탭은 Quill이 가져감)
+                          onTap: () => _editorKey.currentState?.focusEnd(),
                           child: SingleChildScrollView(
                             child: Padding(
                               key: _bodyKey,
                               padding: const EdgeInsets.fromLTRB(12, 6, 10, 4),
-                              child: _blocksColumn(),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  if (_showColors) _colorRow(),
+                                  NoteEditor(
+                                    key: _editorKey,
+                                    initial: _s.blocks,
+                                    autofocus: widget.focusOnOpen ||
+                                        _isFreshEmpty(_s),
+                                    onChanged: _onEditorChanged,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -502,89 +333,6 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
         ),
       ),
       ),
-      ),
-    );
-  }
-
-  Widget _blocksColumn() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_showColors) _colorRow(),
-        for (var i = 0; i < _s.blocks.length; i++)
-          if (_s.blocks[i] is ImageBlock)
-            _imageBlockWidget(_s.blocks[i] as ImageBlock, i)
-          else
-            BlockField(
-              key: ValueKey(_s.blocks[i].id),
-              block: _s.blocks[i],
-              shouldFocus: _s.blocks[i].id == _focusId,
-              onChanged: (t) => _onBlockChanged(i, t),
-              onEnter: () => _onEnter(i),
-              onBackspaceEmpty: () => _onBackspaceEmpty(i),
-              onToggle: (v) => _toggle(i, v),
-              onArrowUp: (col) => _onArrowUp(i, col),
-              onArrowDown: (col) => _onArrowDown(i, col),
-              isFirst: i == 0,
-              isLast: i == _s.blocks.length - 1,
-              onToggleType: () => _toggleType(i),
-              pasteSignal: _pasteSignal,
-              pasteText: () => _pasteText,
-              focusColumn: _s.blocks[i].id == _focusId ? _focusColumn : null,
-              focusTick: _s.blocks[i].id == _focusId ? _focusTick : 0,
-            ),
-      ],
-    );
-  }
-
-  // 붙여넣은 이미지 블록: 둥근 썸네일, 스티커 너비에 맞춤. hover 시 삭제(×).
-  Widget _imageBlockWidget(ImageBlock b, int i) {
-    return Padding(
-      key: ValueKey(b.id),
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Stack(
-          children: [
-            Image.file(
-              File(b.path),
-              fit: BoxFit.fitWidth,
-              width: double.infinity,
-              // 이미지는 비동기 디코드 → 로드되면 창 높이를 한 번 다시 맞춤.
-              frameBuilder: (_, child, frame, wasSync) {
-                if (frame != null && !wasSync) {
-                  WidgetsBinding.instance.addPostFrameCallback(
-                      (_) => mounted ? _scheduleResize() : null);
-                }
-                return child;
-              },
-              errorBuilder: (_, _, _) => Container(
-                height: 60,
-                alignment: Alignment.center,
-                color: const Color(0x11000000),
-                child: const Text('이미지를 불러올 수 없어요',
-                    style: TextStyle(fontSize: 11, color: Colors.black38)),
-              ),
-            ),
-            if (_hovering)
-              Positioned(
-                top: 4,
-                right: 4,
-                child: GestureDetector(
-                  onTap: () => _removeBlock(i),
-                  child: Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: const BoxDecoration(
-                      color: Color(0x99000000),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.close,
-                        size: 13, color: Colors.white),
-                  ),
-                ),
-              ),
-          ],
-        ),
       ),
     );
   }
@@ -631,8 +379,6 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                   child: Icon(Icons.push_pin, size: 13, color: Colors.black38),
                 ),
               if (_hovering) ...[
-                _iconBtn(Icons.image_outlined, _pasteFromClipboard,
-                    '클립보드 이미지 붙이기'),
                 _iconBtn(Icons.palette_outlined,
                     () => setState(() => _showColors = !_showColors)),
                 _iconBtn(

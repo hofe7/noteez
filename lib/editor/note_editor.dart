@@ -34,6 +34,16 @@ class NoteEditorState extends State<NoteEditor> {
 
   QuillController get controller => _controller;
 
+  /// 에디터에 포커스 + 커서를 문서 끝으로. (빈 영역 탭 / 검색 소환 시)
+  void focusEnd() {
+    _focus.requestFocus();
+    final len = _controller.document.length;
+    _controller.updateSelection(
+      TextSelection.collapsed(offset: len > 0 ? len - 1 : 0),
+      ChangeSource.local,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
