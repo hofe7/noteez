@@ -8,11 +8,12 @@ import 'package:flutter/widgets.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'connection_engine.dart';
-import 'date_query.dart';
 import 'db/database.dart';
 import 'ipc.dart';
+import 'link_graph.dart';
 import 'models/sticky.dart';
 import 'report.dart';
+import 'sticky_search.dart';
 
 const _uuid = Uuid();
 
@@ -24,8 +25,8 @@ class MainController extends ChangeNotifier {
   final Map<String, WindowController> _windows = {};
   WindowController? _overviewWin; // 전체 보기 창(열려 있으면 변경을 push)
 
-  /// 승인된 연결(양방향 인접). stickyId → 연결된 stickyId 집합. 지식 그래프.
-  final Map<String, Set<String>> _links = {};
+  /// 승인된 연결(지식 그래프). 인접/묶음 알고리즘은 LinkGraph 가 담당.
+  final LinkGraph _graph = LinkGraph();
 
   /// 검색 팔레트(메인 창)를 열 때마다 틱. 팔레트가 듣고 초기화+포커스.
   final ValueNotifier<int> searchTick = ValueNotifier<int>(0);
@@ -51,7 +52,7 @@ class MainController extends ChangeNotifier {
 
     // 연결(엣지) 로드 → 창 뜨자마자 "🔗 연결" 표시.
     for (final l in await _db.allActiveLinks()) {
-      _addLinkMem(l.aId, l.bId);
+      _graph.addEdge(l.aId, l.bId);
     }
 
     // 저장된 임베딩 로드(모델 불필요) → 캐시된 메모는 연결 즉시 표시.
@@ -97,10 +98,7 @@ class MainController extends ChangeNotifier {
         stickies.removeWhere((e) => e.id == id);
         _windows.remove(id);
         _conn.remove(id);
-        _links.remove(id);
-        for (final set in _links.values) {
-          set.remove(id);
-        }
+        _graph.remove(id);
         await _db.softDelete(id);
         notifyListeners();
         _pushOverview();
@@ -108,7 +106,7 @@ class MainController extends ChangeNotifier {
         await addSticky();
       case ToMain.getConnection:
         final sid = call.arguments as String;
-        final linked = _links[sid] ?? <String>{};
+        final linked = _graph.neighbors(sid);
         final linkList = <Map<String, dynamic>>[];
         for (final lid in linked) {
           final p = _previewOf(lid);
@@ -122,7 +120,7 @@ class MainController extends ChangeNotifier {
         final b = m['b'] as String;
         await _db.insertLink(
             _uuid.v4(), a, b, DateTime.now().millisecondsSinceEpoch);
-        _addLinkMem(a, b);
+        _graph.addEdge(a, b);
         _pushOverview();
       case ToMain.closeSticky:
         // 닫기(보관): 창만 닫고 데이터는 유지(open=false).
@@ -156,11 +154,6 @@ class MainController extends ChangeNotifier {
     return null;
   }
 
-  void _addLinkMem(String a, String b) {
-    (_links[a] ??= <String>{}).add(b);
-    (_links[b] ??= <String>{}).add(a);
-  }
-
   String? _previewOf(String id) {
     for (final s in stickies) {
       if (s.id == id) return s.preview;
@@ -178,55 +171,19 @@ class MainController extends ChangeNotifier {
   }
 
   /// 승인된 연결의 연결요소(묶음) 목록. 각 멤버 {id,preview,color}, 큰 묶음 먼저.
-  /// 검색창 '둘러보기' + 회고에 사용.
-  List<List<Map<String, dynamic>>> clusters() {
-    final seen = <String>{};
-    final out = <List<Map<String, dynamic>>>[];
-    for (final start in _links.keys) {
-      if (seen.contains(start)) continue;
-      if (_links[start]?.isEmpty ?? true) continue;
-      final comp = <String>[];
-      final q = <String>[start];
-      seen.add(start);
-      while (q.isNotEmpty) {
-        final u = q.removeLast();
-        comp.add(u);
-        for (final v in _links[u] ?? const <String>{}) {
-          if (seen.add(v)) q.add(v);
-        }
-      }
-      comp.sort(
-          (a, b) => (_links[b]?.length ?? 0).compareTo(_links[a]?.length ?? 0));
-      final members = [for (final id in comp) _nodeOf(id)]
-          .whereType<Map<String, dynamic>>()
-          .toList();
-      if (members.length >= 2) out.add(members);
-    }
-    out.sort((a, b) => b.length.compareTo(a.length));
-    return out;
-  }
+  /// 검색창 '둘러보기' + 회고에 사용. (그래프 알고리즘은 LinkGraph, 여기선 표현 매핑만)
+  List<List<Map<String, dynamic>>> clusters() => [
+        for (final comp in _graph.clusters())
+          [for (final id in comp) _nodeOf(id)]
+              .whereType<Map<String, dynamic>>()
+              .toList(),
+      ];
 
   /// 한 메모와 '같은 묶음'인 다른 메모들 (가까운=연결 많은 순). 없으면 빈 리스트.
-  List<Map<String, dynamic>> sameCluster(String id) {
-    if (!_links.containsKey(id)) return const [];
-    final seen = <String>{id};
-    final q = <String>[id];
-    final comp = <String>[];
-    while (q.isNotEmpty) {
-      final u = q.removeLast();
-      for (final v in _links[u] ?? const <String>{}) {
-        if (seen.add(v)) {
-          q.add(v);
-          comp.add(v);
-        }
-      }
-    }
-    comp.sort(
-        (a, b) => (_links[b]?.length ?? 0).compareTo(_links[a]?.length ?? 0));
-    return [for (final cid in comp) _nodeOf(cid)]
-        .whereType<Map<String, dynamic>>()
-        .toList();
-  }
+  List<Map<String, dynamic>> sameCluster(String id) =>
+      [for (final cid in _graph.sameCluster(id)) _nodeOf(cid)]
+          .whereType<Map<String, dynamic>>()
+          .toList();
 
   Future<void> addSticky() async {
     final n = stickies.length;
@@ -272,56 +229,11 @@ class MainController extends ChangeNotifier {
   /// 검색 결과를 두 묶음으로:
   ///  - exact: 키워드가 실제로 들어있는 메모(정확한 일치). 또는 날짜/빈쿼리 결과.
   ///  - related: 키워드는 없지만 의미상 가까운 메모(AI 관련). 노이즈 방지로 높은 바 + 소수만.
-  Future<({List<Sticky> exact, List<Sticky> related})> search(
-      String query) async {
-    final q = query.trim();
-    if (q.isEmpty) {
-      final recent = [...stickies]
-        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-      return (exact: recent, related: const <Sticky>[]);
-    }
-
-    // 날짜 질의면 작성·수정일로 필터(전부 정확 묶음).
-    final range = parseDateQuery(q, DateTime.now());
-    if (range != null) {
-      final hits = stickies
-          .where((s) =>
-              range.contains(s.createdAt) || range.contains(s.updatedAt))
-          .toList()
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      return (exact: hits, related: const <Sticky>[]);
-    }
-
-    // 키워드 일치는 띄어쓰기·대소문자 무시 ("구조개선"="구조 개선", "redis"="Redis").
-    String norm(String s) => s.toLowerCase().replaceAll(RegExp(r'\s+'), '');
-    final nq = norm(q);
-    bool kw(Sticky s) => s.blocks.any((b) => norm(b.text).contains(nq));
-
-    // 정확 일치(키워드 포함) — 최근순.
-    final exact = stickies.where(kw).toList()
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    final exactIds = {for (final s in exact) s.id};
-
-    // 의미상 관련 — 키워드엔 없지만 임베딩 점수 높은 것 (음차 "레디스"→Redis 등).
-    // 정확 일치가 있으면 엄격(보너스만), 없으면 관대(의미검색이 곧 답) → 빈 결과 방지.
-    final sem = <String, double>{
-      for (final e in await _conn.rankByQuery(q)) e.key: e.value,
-    };
-    final double relatedBar = exact.isEmpty ? 0.80 : 0.88;
-    final int relatedMax = exact.isEmpty ? 6 : 4;
-    final related = <Sticky>[];
-    final cands = stickies
-        .where((s) => !exactIds.contains(s.id))
-        .map((s) => MapEntry(s, sem[s.id] ?? 0.0))
-        .where((e) => e.value >= relatedBar)
-        .toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    for (final e in cands) {
-      related.add(e.key);
-      if (related.length >= relatedMax) break;
-    }
-    return (exact: exact, related: related);
-  }
+  /// 검색(키워드/날짜 + 의미 관련). 로직은 sticky_search 에 분리, 여기선 의미 점수
+  /// 공급자(임베딩 엔진)만 주입.
+  Future<SearchResult> search(String query) =>
+      searchStickies(stickies, query, DateTime.now(), (q) async =>
+          {for (final e in await _conn.rankByQuery(q)) e.key: e.value});
 
   // 메인 창(검색/캡처) 투명·프레임리스를 열 때마다 재적용. (시작 시 1회만 하면
   // 숨김 상태라 안 박혀서 불투명 검정 창이 보이는 문제가 있었음.)
@@ -388,14 +300,9 @@ class MainController extends ChangeNotifier {
           'createdAt': s.createdAt.millisecondsSinceEpoch,
         },
     ];
-    final seen = <String>{};
-    final edges = <Map<String, String>>[];
-    _links.forEach((a, set) {
-      for (final b in set) {
-        final key = a.compareTo(b) < 0 ? '$a|$b' : '$b|$a';
-        if (seen.add(key)) edges.add({'a': a, 'b': b});
-      }
-    });
+    final edges = [
+      for (final e in _graph.uniqueEdges()) {'a': e.a, 'b': e.b},
+    ];
     return {'notes': notes, 'edges': edges};
   }
 
