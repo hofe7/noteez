@@ -41,8 +41,7 @@ class OverviewWindow extends StatefulWidget {
 }
 
 class _OverviewWindowState extends State<OverviewWindow> {
-  static const _main =
-      WindowMethodChannel(kMainChannel, mode: ChannelMode.unidirectional);
+  static const _main = MainChannel.instance;
   static const Color _accent = AppColors.accent; // 시그니처 허니 앰버
 
   final DateTime _now = DateTime.now();
@@ -59,7 +58,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
     super.initState();
     WindowController.fromCurrentEngine().then((c) {
       c.setWindowMethodHandler((call) async {
-        if (call.method == 'refresh' && mounted) {
+        if (call.method == ToWindow.refresh && mounted) {
           final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
           setState(() {
             _notes = (m['notes'] as List).cast<Map<String, dynamic>>();
@@ -71,8 +70,8 @@ class _OverviewWindowState extends State<OverviewWindow> {
     });
   }
 
-  Future<void> _open(String id) => _main.invokeMethod('focusSticky', id);
-  Future<void> _drawer(String id) => _main.invokeMethod('drawerSticky', id);
+  Future<void> _open(String id) => _main.focusSticky(id);
+  Future<void> _drawer(String id) => _main.drawerSticky(id);
 
   bool _matches(Map<String, dynamic> n) {
     final t = _filter.trim().toLowerCase();

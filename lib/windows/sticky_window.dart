@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
@@ -40,8 +39,7 @@ class StickyWindow extends StatefulWidget {
 }
 
 class _StickyWindowState extends State<StickyWindow> with WindowListener {
-  static const _main =
-      WindowMethodChannel(kMainChannel, mode: ChannelMode.unidirectional);
+  static const _main = MainChannel.instance;
   static const double _width = 244; // 기본 너비
   static const double _headerH = 30;
   static const double _maxBodyH = 520;
@@ -75,11 +73,11 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     // 메인→이 창 단일 메시지 채널: 'focusEditor' 오면 에디터 끝에 커서.
     WindowController.fromCurrentEngine().then((c) {
       c.setWindowMethodHandler((call) async {
-        if (call.method == 'focusEditor' && mounted) {
+        if (call.method == ToWindow.focusEditor && mounted) {
           _editorKey.currentState?.focusEnd();
         }
         // 전체 보기에서 '서랍에 넣기' → 메인이 상태 갱신 후 창만 닫으라고 요청.
-        if (call.method == 'requestClose') {
+        if (call.method == ToWindow.requestClose) {
           _saveTimer?.cancel();
           await windowManager.close();
         }
@@ -121,21 +119,18 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
 
   Future<void> _fetchConnection() async {
     try {
-      final r = await _main.invokeMethod('getConnection', _s.id);
+      final r = await _main.getConnection(_s.id);
       if (!mounted) return;
-      final map = (r is String) ? jsonDecode(r) as Map<String, dynamic> : null;
       setState(() {
-        _links = map == null
-            ? const []
-            : (map['links'] as List).cast<Map<String, dynamic>>();
-        _suggestion = map?['suggestion'] as Map<String, dynamic>?;
+        _links = r.links;
+        _suggestion = r.suggestion;
         _sugExpanded = false;
       });
     } catch (_) {/* 연결 기능 비활성/오류 → 표시 안 함 */}
   }
 
   Future<void> _acceptLink(String otherId) async {
-    await _main.invokeMethod('linkStickies', jsonEncode({'a': _s.id, 'b': otherId}));
+    await _main.linkStickies(_s.id, otherId);
     await _fetchConnection();
   }
 
@@ -149,7 +144,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   void _persist() {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 300), () async {
-      await _main.invokeMethod('updateSticky', jsonEncode(_s.toJson()));
+      await _main.updateSticky(_s);
       await _fetchConnection(); // 편집 반영 후 관련 메모 갱신
     });
   }
@@ -234,14 +229,14 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   // 닫기(보관): 데이터 유지, 창만 닫음. 검색/연결/그래프로 다시 소환 가능.
   Future<void> _close() async {
     _saveTimer?.cancel();
-    await _main.invokeMethod('closeSticky', _s.id);
+    await _main.closeSticky(_s.id);
     await windowManager.close();
   }
 
   // 삭제: 영구 제거(soft delete).
   Future<void> _delete() async {
     _saveTimer?.cancel();
-    await _main.invokeMethod('deleteSticky', _s.id);
+    await _main.deleteSticky(_s.id);
     await windowManager.close();
   }
 
@@ -433,7 +428,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     return Padding(
       padding: const EdgeInsets.only(top: 4, left: 18),
       child: InkWell(
-        onTap: () => _main.invokeMethod('focusSticky', lk['id']),
+        onTap: () => _main.focusSticky(lk['id'] as String),
         borderRadius: BorderRadius.circular(4),
         child: Text(
           lk['preview'] as String,

@@ -79,7 +79,7 @@ class MainController extends ChangeNotifier {
 
   Future<dynamic> _onCall(MethodCall call) async {
     switch (call.method) {
-      case 'updateSticky':
+      case ToMain.updateSticky:
         final s = Sticky.fromJson(
             jsonDecode(call.arguments as String) as Map<String, dynamic>);
         final i = stickies.indexWhere((e) => e.id == s.id);
@@ -92,7 +92,7 @@ class MainController extends ChangeNotifier {
         await _conn.index(s);
         notifyListeners();
         _pushOverview();
-      case 'deleteSticky':
+      case ToMain.deleteSticky:
         final id = call.arguments as String;
         stickies.removeWhere((e) => e.id == id);
         _windows.remove(id);
@@ -104,9 +104,9 @@ class MainController extends ChangeNotifier {
         await _db.softDelete(id);
         notifyListeners();
         _pushOverview();
-      case 'newSticky':
+      case ToMain.newSticky:
         await addSticky();
-      case 'getConnection':
+      case ToMain.getConnection:
         final sid = call.arguments as String;
         final linked = _links[sid] ?? <String>{};
         final linkList = <Map<String, dynamic>>[];
@@ -116,7 +116,7 @@ class MainController extends ChangeNotifier {
         }
         final sug = _conn.connectionFor(sid, stickies, exclude: linked);
         return jsonEncode({'links': linkList, 'suggestion': sug?.toJson()});
-      case 'linkStickies':
+      case ToMain.linkStickies:
         final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
         final a = m['a'] as String;
         final b = m['b'] as String;
@@ -124,7 +124,7 @@ class MainController extends ChangeNotifier {
             _uuid.v4(), a, b, DateTime.now().millisecondsSinceEpoch);
         _addLinkMem(a, b);
         _pushOverview();
-      case 'closeSticky':
+      case ToMain.closeSticky:
         // 닫기(보관): 창만 닫고 데이터는 유지(open=false).
         final id = call.arguments as String;
         final i = stickies.indexWhere((e) => e.id == id);
@@ -134,7 +134,7 @@ class MainController extends ChangeNotifier {
         }
         _windows.remove(id);
         _pushOverview();
-      case 'drawerSticky':
+      case ToMain.drawerSticky:
         // 전체 보기에서 '서랍에 넣기': 데이터 open=false + 실제 창 닫기 요청.
         final id = call.arguments as String;
         final i = stickies.indexWhere((e) => e.id == id);
@@ -145,12 +145,12 @@ class MainController extends ChangeNotifier {
         final wc = _windows.remove(id);
         if (wc != null) {
           try {
-            await wc.invokeMethod('requestClose');
+            await wc.invokeMethod(ToWindow.requestClose);
           } catch (_) {/* 이미 닫힘 등 */}
         }
         notifyListeners();
         _pushOverview();
-      case 'focusSticky':
+      case ToMain.focusSticky:
         await showOne(call.arguments as String);
     }
     return null;
@@ -251,7 +251,7 @@ class MainController extends ChangeNotifier {
       await wc.show();
       // 이미 열린 창: 바로 편집할 수 있게 마지막 줄에 커서.
       try {
-        await wc.invokeMethod('focusEditor');
+        await wc.invokeMethod(ToWindow.focusEditor);
       } catch (_) {/* 핸들러 아직 미등록 등 — 무시 */}
       return;
     }
@@ -414,7 +414,7 @@ class MainController extends ChangeNotifier {
   void _pushOverview() {
     final wc = _overviewWin;
     if (wc == null) return;
-    wc.invokeMethod('refresh', jsonEncode(_overviewData())).catchError((_) {
+    wc.invokeMethod(ToWindow.refresh, jsonEncode(_overviewData())).catchError((_) {
       _overviewWin = null; // 창이 닫혔으면 추적 해제
       return null;
     });
