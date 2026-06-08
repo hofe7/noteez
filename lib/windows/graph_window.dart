@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../date_util.dart';
 import '../ipc.dart';
+import '../link_graph.dart';
 import '../sticky_palette.dart';
 
 /// 전체 보기: 라이브러리 창. 모든 메모(열림 + 서랍)를 묶음 + 그 외로 정리하고
@@ -93,36 +94,27 @@ class _OverviewWindowState extends State<OverviewWindow> {
         _Sort.name => (a['label'] as String).compareTo(b['label'] as String),
       };
 
-  // 묶음(연결요소) + 묶인 id 집합.
+  // 묶음(연결요소) + 묶인 id 집합. 그래프 알고리즘은 LinkGraph(순수, 단위테스트됨)
+  // 재사용 — 별 isolate라 edges 만 받지만 LinkGraph 는 의존성이 없어 그대로 쓴다.
   ({List<List<Map<String, dynamic>>> clusters, Set<String> grouped})
       _grouped() {
     final byId = {for (final n in _notes) n['id'] as String: n};
-    final adj = <String, Set<String>>{};
+    final graph = LinkGraph();
     for (final e in _edges) {
-      final a = e['a'] as String, b = e['b'] as String;
-      (adj[a] ??= {}).add(b);
-      (adj[b] ??= {}).add(a);
+      graph.addEdge(e['a'] as String, e['b'] as String);
     }
-    final seen = <String>{};
-    final grouped = <String>{};
     final clusters = <List<Map<String, dynamic>>>[];
-    for (final start in adj.keys) {
-      if (seen.contains(start) || !byId.containsKey(start)) continue;
-      final comp = <String>[];
-      final queue = <String>[start];
-      seen.add(start);
-      while (queue.isNotEmpty) {
-        final u = queue.removeLast();
-        if (byId.containsKey(u)) comp.add(u);
-        for (final v in adj[u] ?? const <String>{}) {
-          if (seen.add(v)) queue.add(v);
-        }
-      }
-      if (comp.length < 2) continue;
-      comp.sort((a, b) => (adj[b]?.length ?? 0).compareTo(adj[a]?.length ?? 0));
-      grouped.addAll(comp);
-      clusters.add([for (final id in comp) byId[id]!]);
+    final grouped = <String>{};
+    for (final comp in graph.clusters()) {
+      // 삭제된(목록에 없는) id 제거 후 2 미만이면 묶음 아님.
+      final members = [for (final id in comp) byId[id]]
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      if (members.length < 2) continue;
+      grouped.addAll(members.map((m) => m['id'] as String));
+      clusters.add(members);
     }
+    // 필터로 크기가 바뀔 수 있어 표시 기준(노드 수)으로 재정렬.
     clusters.sort((a, b) => b.length.compareTo(a.length));
     return (clusters: clusters, grouped: grouped);
   }
@@ -133,7 +125,8 @@ class _OverviewWindowState extends State<OverviewWindow> {
     // 필터/정렬 적용.
     final visibleClusters = [
       for (final c in g.clusters)
-        if (c.where(_matches).isNotEmpty) c.where(_matches).toList()..sort(_cmp)
+        if (c.where(_matches).toList() case final m when m.isNotEmpty)
+          m..sort(_cmp),
     ];
     final ungrouped = _notes
         .where((n) => !g.grouped.contains(n['id']) && _matches(n))

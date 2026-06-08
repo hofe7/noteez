@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../app_theme.dart';
 import '../date_util.dart';
 import '../main_controller.dart';
 import '../models/sticky.dart';
@@ -55,11 +56,11 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
           ? _results[_selected]
           : null;
 
-  // 시그니처 액센트 = 따뜻한 허니 앰버 (search_palette_widgets 와 공유).
-  static const Color _accent = kPaletteAccent;
-  static const Color _panel = Color(0xFFFFFDF8); // 검색: 순백 대신 살짝 따뜻한 오프화이트
-  static const Color _paper = Color(0xFFFFEFAE); // 캡처: 포스트잇 종이색(=메모 쓰는 느낌)
-  static const Color _inkOnPaper = Color(0xFF6E561B); // 종이 위 캐럿/아이콘(따뜻한 잉크)
+  // 색은 전부 AppColors(단일 소스) 별칭 — 로컬 이름만 유지.
+  static const Color _accent = AppColors.accent; // 시그니처 허니 앰버
+  static const Color _panel = AppColors.surface; // 검색: 따뜻한 오프화이트
+  static const Color _paper = AppColors.paper; // 캡처: 포스트잇 종이색
+  static const Color _inkOnPaper = AppColors.inkOnPaper; // 종이 위 캐럿/아이콘
 
   // 결과 목록에서 "새 메모" 행을 포함한 전체 선택 가능 항목 수.
   // 쿼리가 있으면 맨 끝에 "'쿼리'로 새 메모" 행이 하나 더 붙는다.
