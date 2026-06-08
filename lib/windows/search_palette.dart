@@ -8,6 +8,7 @@ import '../date_util.dart';
 import '../main_controller.dart';
 import '../models/sticky.dart';
 import '../sticky_palette.dart';
+import 'search_palette_widgets.dart';
 
 class SearchPaletteApp extends StatelessWidget {
   const SearchPaletteApp({super.key});
@@ -54,8 +55,8 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
           ? _results[_selected]
           : null;
 
-  // 시그니처 액센트 = 따뜻한 허니 앰버 (포스트잇 파스텔과 한 식구).
-  static const Color _accent = Color(0xFFE8A33D);
+  // 시그니처 액센트 = 따뜻한 허니 앰버 (search_palette_widgets 와 공유).
+  static const Color _accent = kPaletteAccent;
   static const Color _panel = Color(0xFFFFFDF8); // 검색: 순백 대신 살짝 따뜻한 오프화이트
   static const Color _paper = Color(0xFFFFEFAE); // 캡처: 포스트잇 종이색(=메모 쓰는 느낌)
   static const Color _inkOnPaper = Color(0xFF6E561B); // 종이 위 캐럿/아이콘(따뜻한 잉크)
@@ -326,7 +327,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
                     ),
                   ),
                 ] else ...[
-                  if (_browsing) _dateChips(),
+                  if (_browsing) dateChips(_applyChip),
                   const Divider(
                       height: 1,
                       thickness: 1,
@@ -362,7 +363,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   Widget _resultTile(Sticky s, int i) {
     final openTodos =
         s.blocks.whereType<TodoBlock>().where((t) => !t.checked).length;
-    return _row(
+    return paletteRow(
       selected: _selected == i,
       onTap: () => _open(s),
       onHover: () => _selectByHover(i),
@@ -384,7 +385,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                _previewText(s, i < _exactCount),
+                previewText(s.preview, i < _exactCount, _query),
                 const SizedBox(height: 2),
                 Text(
                   relativeDate(s.createdAt, _now),
@@ -393,69 +394,15 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
               ],
             ),
           ),
-          if (openTodos > 0) _todoBadge(openTodos),
+          if (openTodos > 0) todoBadge(openTodos),
         ],
-      ),
-    );
-  }
-
-  // 미리보기 텍스트. 정확 일치면 검색어를 앰버로 강조.
-  Widget _previewText(Sticky s, bool exact) {
-    const base = TextStyle(
-        fontSize: 14, color: Colors.black87, fontWeight: FontWeight.w400);
-    final preview = s.preview;
-    final lq = _query.trim().toLowerCase();
-    final idx = (exact && lq.isNotEmpty) ? preview.toLowerCase().indexOf(lq) : -1;
-    if (idx < 0) {
-      return Text(preview,
-          maxLines: 1, overflow: TextOverflow.ellipsis, style: base);
-    }
-    return Text.rich(
-      TextSpan(style: base, children: [
-        TextSpan(text: preview.substring(0, idx)),
-        TextSpan(
-            text: preview.substring(idx, idx + lq.length),
-            // 은은한 형광펜: 쨍한 색 대신 옅은 앰버 배경.
-            style: TextStyle(
-                backgroundColor: _accent.withValues(alpha: 0.16),
-                color: Colors.black87)),
-        TextSpan(text: preview.substring(idx + lq.length)),
-      ]),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-
-  // "할 일 N" 작은 알약 배지.
-  Widget _todoBadge(int n) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: const Color(0x0A000000),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.checklist_rounded,
-                size: 13, color: Colors.black38),
-            const SizedBox(width: 4),
-            Text('$n',
-                style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.black45,
-                    fontWeight: FontWeight.w500)),
-          ],
-        ),
       ),
     );
   }
 
   // "'쿼리'로 새 메모" 행 — 결과 목록 맨 끝. Enter/클릭으로 생성.
   Widget _createTile(int i) {
-    return _row(
+    return paletteRow(
       selected: _selected == i,
       onTap: _createFromQuery,
       onHover: () => _selectByHover(i),
@@ -498,69 +445,6 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
     });
   }
 
-  // 공통 행 컨테이너: 선택 시 옅은 배경 + 둥근 모서리.
-  Widget _row({
-    required bool selected,
-    required VoidCallback onTap,
-    required VoidCallback onHover,
-    required Widget child,
-  }) {
-    return MouseRegion(
-      onEnter: (_) => onHover(),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          alignment: Alignment.centerLeft,
-          decoration: BoxDecoration(
-            color: selected
-                ? _accent.withValues(alpha: 0.16)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-
-  // 빈 검색 화면의 날짜 퀵 칩 — 날짜로도 찾을 수 있다는 걸 노출(발견성).
-  Widget _dateChips() {
-    const items = ['오늘', '어제', '이번 주', '지난 주', '이번 달'];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
-      child: Row(
-        children: [
-          const Icon(Icons.calendar_today_rounded,
-              size: 13, color: Colors.black26),
-          const SizedBox(width: 9),
-          for (final t in items)
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _applyChip(t),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: const Color(0x07000000),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0x0F000000)),
-                  ),
-                  child: Text(t,
-                      style: const TextStyle(
-                          fontSize: 12, color: Colors.black54)),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   void _applyChip(String t) {
     _q.text = t;
     _query = t;
@@ -572,13 +456,13 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   // 빈 검색 = 최근 메모(런처답게). 묶음 둘러보기/정리는 전체 보기(⌘⇧G)가 담당.
   // 타이핑 시 = 정확 일치 + "AI 관련" 구역. (선택 메모의 '같은 묶음'은 패널로 유지.)
   Widget _mainList(List<Sticky> results) {
-    if (results.isEmpty && !_hasCreateRow) return _emptyState();
+    if (results.isEmpty && !_hasCreateRow) return emptyState();
     final children = <Widget>[];
     for (var i = 0; i < _exactCount && i < results.length; i++) {
       children.add(_resultTile(results[i], i));
     }
     if (results.length > _exactCount) {
-      children.add(_sectionLabel('AI 관련'));
+      children.add(sectionLabel('AI 관련'));
       for (var i = _exactCount; i < results.length; i++) {
         children.add(_resultTile(results[i], i));
       }
@@ -590,35 +474,6 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
       children: children,
     );
   }
-
-  // 구역 라벨 (정확 일치 / AI 관련 사이).
-  Widget _sectionLabel(String t) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 10, 16, 4),
-        child: Row(
-          children: [
-            const Icon(Icons.auto_awesome, size: 12, color: Colors.black26),
-            const SizedBox(width: 6),
-            Text(t,
-                style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black38,
-                    letterSpacing: 0.2)),
-          ],
-        ),
-      );
-
-  Widget _emptyState() => const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.search_off_rounded, size: 26, color: Colors.black26),
-            SizedBox(height: 8),
-            Text('결과가 없어요',
-                style: TextStyle(color: Colors.black38, fontSize: 13)),
-          ],
-        ),
-      );
 
   // 메모 한 줄(색칩 + 미리보기). 클릭 → 그 메모 소환. (관련 패널에서 사용)
   Widget _noteRow(Map<String, dynamic> m,
@@ -635,7 +490,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
         padding: EdgeInsets.fromLTRB(indent ? 26 : 12, 8, 12, 8),
         child: Row(
           children: [
-            _chip(m['color'] as int),
+            colorChip(m['color'] as int),
             const SizedBox(width: 11),
             Expanded(
               child: Text(
@@ -655,27 +510,6 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
       ),
     );
   }
-
-  Widget _chip(int colorIndex) => Container(
-        width: 12,
-        height: 12,
-        decoration: BoxDecoration(
-          color: StickyPalette.of(colorIndex),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: const Color(0x14000000)),
-        ),
-      );
-
-  Widget _countBadge(int n) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(
-          color: _accent.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text('$n',
-            style: const TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w700, color: _accent)),
-      );
 
   Future<void> _openId(String id) async {
     await _hide();
@@ -712,7 +546,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
               children: [
                 _panelCurrent(id),
                 const SizedBox(height: 10),
-                _relatedHeader(),
+                relatedHeader(_relatedItems().length),
                 const SizedBox(height: 2),
                 if (items.isEmpty)
                   const Padding(
@@ -742,7 +576,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 8, 14, 2),
-            child: _relatedHeader(),
+            child: relatedHeader(_relatedItems().length),
           ),
           Flexible(
             child: ListView(
@@ -767,7 +601,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 3),
-            child: _chip(brief['color'] as int),
+            child: colorChip(brief['color'] as int),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -786,22 +620,6 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
       ),
     );
   }
-
-  Widget _relatedHeader() => Row(
-        children: [
-          const Icon(Icons.bubble_chart_outlined,
-              size: 14, color: Colors.black38),
-          const SizedBox(width: 6),
-          const Text('같은 묶음',
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black54,
-                  letterSpacing: -0.2)),
-          const SizedBox(width: 6),
-          _countBadge(_relatedItems().length),
-        ],
-      );
 
   Widget _footerHint() {
     return Padding(
