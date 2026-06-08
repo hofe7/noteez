@@ -4,8 +4,6 @@ import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
-import 'editor/editor_prototype.dart';
-import 'embed/embed_spike.dart';
 import 'main_controller.dart';
 import 'menubar.dart';
 import 'models/sticky.dart';
@@ -16,12 +14,6 @@ import 'windows/report_window.dart';
 import 'windows/search_palette.dart';
 import 'windows/sticky_window.dart';
 
-// 임베딩 스파이크 토글 (검증 완료 → false. 연결 기능은 제품에 직접 배선 예정).
-const bool _kEmbedSpike = false;
-
-// 에디터 교체 프로토타입 토글 (검증 끝 → false. 실제 스티커가 NoteEditor 사용).
-const bool _kEditorProto = false;
-
 /// 모든 창(메인/스티커)이 main()을 돈다. fromCurrentEngine().arguments 로 구분.
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,37 +21,6 @@ Future<void> main(List<String> args) async {
 
   final wc = await WindowController.fromCurrentEngine();
   final argStr = wc.arguments;
-
-  // SPIKE: 임베딩 검증 (Step A). 끝나면 _kEmbedSpike=false 로 끄기.
-  if (argStr.isEmpty && _kEmbedSpike) {
-    final result = await runEmbeddingSpike();
-    runApp(MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text('EMBED SPIKE\n\n$result'),
-          ),
-        ),
-      ),
-    ));
-    return;
-  }
-
-  // 에디터 프로토타입: 일반 창에 super_editor 하나 띄워 선택/⌘A/체크박스/이미지 검증.
-  if (argStr.isEmpty && _kEditorProto) {
-    windowManager.waitUntilReadyToShow(
-      const WindowOptions(size: Size(620, 720), center: true),
-      () async {
-        await windowManager.setTitle('Noteez · 에디터 프로토타입');
-        await windowManager.show();
-        await windowManager.focus();
-      },
-    );
-    runApp(const EditorPrototypeApp());
-    return;
-  }
 
   if (argStr.isEmpty) {
     // 메인 = 권위자. DB 로드 + 스티커 창 생성.
