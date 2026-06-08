@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../app_theme.dart';
 import '../sticky_palette.dart';
 
 /// 검색 팔레트의 순수 표현 위젯 모음 — 상태에 안 엮이고 파라미터만 받는다.
 /// (상태 조정이 필요한 빌더는 search_palette.dart 의 State 에 남는다.)
-
-/// 시그니처 액센트 = 따뜻한 허니 앰버 (포스트잇 파스텔과 한 식구).
-const Color kPaletteAccent = Color(0xFFE8A33D);
+/// 색은 전부 AppColors(단일 소스)에서 가져온다.
 
 /// 메모 색칩 (12×12 둥근 사각).
 Widget colorChip(int colorIndex) => Container(
@@ -47,12 +46,12 @@ Widget todoBadge(int n) => Padding(
 Widget countBadge(int n) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: kPaletteAccent.withValues(alpha: 0.14),
+        color: AppColors.accent.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text('$n',
           style: const TextStyle(
-              fontSize: 11, fontWeight: FontWeight.w700, color: kPaletteAccent)),
+              fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.accent)),
     );
 
 /// 구역 라벨 (정확 일치 / AI 관련 사이).
@@ -119,7 +118,7 @@ Widget paletteRow({
           alignment: Alignment.centerLeft,
           decoration: BoxDecoration(
             color: selected
-                ? kPaletteAccent.withValues(alpha: 0.16)
+                ? AppColors.accent.withValues(alpha: 0.16)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
@@ -144,7 +143,7 @@ Widget previewText(String preview, bool exact, String query) {
       TextSpan(
           text: preview.substring(idx, idx + lq.length),
           style: TextStyle(
-              backgroundColor: kPaletteAccent.withValues(alpha: 0.16),
+              backgroundColor: AppColors.accent.withValues(alpha: 0.16),
               color: Colors.black87)),
       TextSpan(text: preview.substring(idx + lq.length)),
     ]),
