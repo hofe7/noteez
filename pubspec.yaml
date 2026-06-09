@@ -44,6 +44,7 @@ dependencies:
   onnxruntime: ^1.4.1
   pasteboard: ^0.5.0
   flutter_quill: ^11.5.0
+  flutter_local_notifications: ^19.4.2 # 리마인더 알림(best-effort)
 
 dev_dependencies:
   flutter_test:
