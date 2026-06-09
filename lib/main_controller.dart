@@ -102,8 +102,14 @@ class MainController extends ChangeNotifier {
   Future<dynamic> _onCall(MethodCall call) async {
     switch (call.method) {
       case ToMain.updateSticky:
-        final s = Sticky.fromJson(
+        var s = Sticky.fromJson(
             jsonDecode(call.arguments as String) as Map<String, dynamic>);
+        // 리마인더는 setReminder 가 권위자. 창이 일반 업데이트로 보낸 과거 remindAt
+        // (이미 발화된 것)은 무시 — 재시작 시 catch-up 재발화 방지.
+        final ra = s.remindAt;
+        if (ra != null && ra <= DateTime.now().millisecondsSinceEpoch) {
+          s = s.copyWith(clearRemind: true);
+        }
         final i = stickies.indexWhere((e) => e.id == s.id);
         if (i != -1) {
           stickies[i] = s;

@@ -61,6 +61,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   bool _linksExpanded = false; // 연결 목록 펼치기 (기본은 "연결 N"으로 접음)
   bool _hovering = false;
   bool _showColors = false;
+  bool _showReminder = false; // 리마인더 프리셋 피커 표시
   bool _userSized = false; // 사용자가 창 크기 직접 바꾸면 자동 맞춤 끔
 
   static bool _isFreshEmpty(Sticky s) =>
@@ -298,6 +299,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   if (_showColors) _colorRow(),
+                                  if (_showReminder) _reminderPicker(),
                                   NoteEditor(
                                     key: _editorKey,
                                     initial: _s.blocks,
@@ -334,9 +336,120 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   }
 
   List<Widget> _footerChildren() => [
+        if (_s.remindAt != null) _reminderStatus(),
         if (_links.isNotEmpty) _linksWidget(),
         if (_suggestion != null) _suggestionRow(_suggestion!),
       ];
+
+  // 리마인더 프리셋 (라벨, 시각). 발화 시 이 스티커가 desk 로 소환된다.
+  List<(String, DateTime)> _remindPresets() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    DateTime at(DateTime base, int h) =>
+        DateTime(base.year, base.month, base.day, h);
+    var evening = at(today, 18);
+    if (!evening.isAfter(now)) evening = at(tomorrow, 18);
+    var toMon = (8 - today.weekday) % 7;
+    if (toMon == 0) toMon = 7; // 오늘이 월요일이면 다음 주 월요일
+    return [
+      ('1시간 후', now.add(const Duration(hours: 1))),
+      ('오늘 저녁', evening),
+      ('내일 아침', at(tomorrow, 9)),
+      ('내일 저녁', at(tomorrow, 18)),
+      ('다음 주', at(today.add(Duration(days: toMon)), 9)),
+    ];
+  }
+
+  Future<void> _setReminder(DateTime dt) async {
+    final ms = dt.millisecondsSinceEpoch;
+    await _main.setReminder(_s.id, ms); // 메인이 예약(권위자)
+    if (!mounted) return;
+    setState(() {
+      _s = _s.copyWith(remindAt: ms);
+      _showReminder = false;
+    });
+  }
+
+  Future<void> _clearReminder() async {
+    await _main.clearReminder(_s.id);
+    if (!mounted) return;
+    setState(() {
+      _s = _s.copyWith(clearRemind: true);
+      _showReminder = false;
+    });
+  }
+
+  // 미래 시각 표시: 오늘/내일/모레 HH:mm 또는 M/D HH:mm.
+  String _fmtRemind(int ms) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(ms);
+    final now = DateTime.now();
+    final d0 = DateTime(now.year, now.month, now.day);
+    final days = DateTime(dt.year, dt.month, dt.day).difference(d0).inDays;
+    final hm =
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    final day = switch (days) {
+      0 => '오늘',
+      1 => '내일',
+      2 => '모레',
+      _ => '${dt.month}/${dt.day}',
+    };
+    return '$day $hm';
+  }
+
+  Widget _reminderPicker() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, top: 2),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final (label, dt) in _remindPresets())
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _setReminder(dt),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0x0A000000),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0x0F000000)),
+                ),
+                child: Text(label,
+                    style:
+                        const TextStyle(fontSize: 12, color: Colors.black54)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // 설정된 리마인더 표시(+해제). 푸터에 노출.
+  Widget _reminderStatus() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Icon(Icons.alarm, size: 13, color: StickyPalette.ink(_s.colorIndex)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(_fmtRemind(_s.remindAt!),
+                style: const TextStyle(fontSize: 12, color: Colors.black54)),
+          ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _clearReminder,
+            child: const Padding(
+              padding: EdgeInsets.all(2),
+              child: Icon(Icons.close, size: 13, color: Colors.black38),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _header() {
     return ClipRRect(
@@ -374,7 +487,16 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                   padding: EdgeInsets.only(right: 8),
                   child: Icon(Icons.push_pin, size: 13, color: Colors.black38),
                 ),
+              if (_s.remindAt != null && !_hovering)
+                const Padding(
+                  padding: EdgeInsets.only(right: 8),
+                  child: Icon(Icons.alarm, size: 13, color: Colors.black38),
+                ),
               if (_hovering) ...[
+                _iconBtn(
+                    _s.remindAt != null ? Icons.alarm_on : Icons.alarm_add,
+                    () => setState(() => _showReminder = !_showReminder),
+                    '리마인더'),
                 _iconBtn(Icons.palette_outlined,
                     () => setState(() => _showColors = !_showColors)),
                 _iconBtn(
