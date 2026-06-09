@@ -21,6 +21,7 @@ class Stickies extends Table {
   BoolColumn get collapsed => boolean().withDefault(const Constant(false))();
   BoolColumn get pinned => boolean().withDefault(const Constant(false))();
   BoolColumn get open => boolean().withDefault(const Constant(true))();
+  IntColumn get remindAt => integer().nullable()(); // 리마인더 시각(millis)
   TextColumn get blocksJson => text()();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
@@ -60,7 +61,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -69,6 +70,7 @@ class AppDatabase extends _$AppDatabase {
           if (from < 3) await m.createTable(links);
           if (from < 4) await m.createTable(embeddings);
           if (from < 5) await m.addColumn(stickies, stickies.open);
+          if (from < 6) await m.addColumn(stickies, stickies.remindAt);
         },
       );
 
@@ -107,6 +109,7 @@ class AppDatabase extends _$AppDatabase {
         collapsed: Value(s.collapsed),
         pinned: Value(s.pinned),
         open: Value(s.open),
+        remindAt: Value(s.remindAt),
         blocksJson: jsonEncode(s.blocks.map((b) => b.toJson()).toList()),
         createdAt: s.createdAt.millisecondsSinceEpoch,
         updatedAt: s.updatedAt.millisecondsSinceEpoch,
@@ -130,6 +133,7 @@ class AppDatabase extends _$AppDatabase {
         collapsed: r.collapsed,
         pinned: r.pinned,
         open: r.open,
+        remindAt: r.remindAt,
         createdAt: DateTime.fromMillisecondsSinceEpoch(r.createdAt),
         updatedAt: DateTime.fromMillisecondsSinceEpoch(r.updatedAt),
         blocks: (jsonDecode(r.blocksJson) as List)

@@ -88,6 +88,17 @@ class $StickiesTable extends Stickies
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _remindAtMeta = const VerificationMeta(
+    'remindAt',
+  );
+  @override
+  late final GeneratedColumn<int> remindAt = GeneratedColumn<int>(
+    'remind_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _blocksJsonMeta = const VerificationMeta(
     'blocksJson',
   );
@@ -141,6 +152,7 @@ class $StickiesTable extends Stickies
     collapsed,
     pinned,
     open,
+    remindAt,
     blocksJson,
     createdAt,
     updatedAt,
@@ -197,6 +209,12 @@ class $StickiesTable extends Stickies
       context.handle(
         _openMeta,
         open.isAcceptableOrUnknown(data['open']!, _openMeta),
+      );
+    }
+    if (data.containsKey('remind_at')) {
+      context.handle(
+        _remindAtMeta,
+        remindAt.isAcceptableOrUnknown(data['remind_at']!, _remindAtMeta),
       );
     }
     if (data.containsKey('blocks_json')) {
@@ -266,6 +284,10 @@ class $StickiesTable extends Stickies
         DriftSqlType.bool,
         data['${effectivePrefix}open'],
       )!,
+      remindAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}remind_at'],
+      ),
       blocksJson: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}blocks_json'],
@@ -299,6 +321,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
   final bool collapsed;
   final bool pinned;
   final bool open;
+  final int? remindAt;
   final String blocksJson;
   final int createdAt;
   final int updatedAt;
@@ -311,6 +334,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     required this.collapsed,
     required this.pinned,
     required this.open,
+    this.remindAt,
     required this.blocksJson,
     required this.createdAt,
     required this.updatedAt,
@@ -326,6 +350,9 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     map['collapsed'] = Variable<bool>(collapsed);
     map['pinned'] = Variable<bool>(pinned);
     map['open'] = Variable<bool>(open);
+    if (!nullToAbsent || remindAt != null) {
+      map['remind_at'] = Variable<int>(remindAt);
+    }
     map['blocks_json'] = Variable<String>(blocksJson);
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -344,6 +371,9 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
       collapsed: Value(collapsed),
       pinned: Value(pinned),
       open: Value(open),
+      remindAt: remindAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remindAt),
       blocksJson: Value(blocksJson),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -366,6 +396,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
       collapsed: serializer.fromJson<bool>(json['collapsed']),
       pinned: serializer.fromJson<bool>(json['pinned']),
       open: serializer.fromJson<bool>(json['open']),
+      remindAt: serializer.fromJson<int?>(json['remindAt']),
       blocksJson: serializer.fromJson<String>(json['blocksJson']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
@@ -383,6 +414,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
       'collapsed': serializer.toJson<bool>(collapsed),
       'pinned': serializer.toJson<bool>(pinned),
       'open': serializer.toJson<bool>(open),
+      'remindAt': serializer.toJson<int?>(remindAt),
       'blocksJson': serializer.toJson<String>(blocksJson),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
@@ -398,6 +430,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     bool? collapsed,
     bool? pinned,
     bool? open,
+    Value<int?> remindAt = const Value.absent(),
     String? blocksJson,
     int? createdAt,
     int? updatedAt,
@@ -410,6 +443,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     collapsed: collapsed ?? this.collapsed,
     pinned: pinned ?? this.pinned,
     open: open ?? this.open,
+    remindAt: remindAt.present ? remindAt.value : this.remindAt,
     blocksJson: blocksJson ?? this.blocksJson,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -426,6 +460,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
       collapsed: data.collapsed.present ? data.collapsed.value : this.collapsed,
       pinned: data.pinned.present ? data.pinned.value : this.pinned,
       open: data.open.present ? data.open.value : this.open,
+      remindAt: data.remindAt.present ? data.remindAt.value : this.remindAt,
       blocksJson: data.blocksJson.present
           ? data.blocksJson.value
           : this.blocksJson,
@@ -445,6 +480,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
           ..write('collapsed: $collapsed, ')
           ..write('pinned: $pinned, ')
           ..write('open: $open, ')
+          ..write('remindAt: $remindAt, ')
           ..write('blocksJson: $blocksJson, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -462,6 +498,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     collapsed,
     pinned,
     open,
+    remindAt,
     blocksJson,
     createdAt,
     updatedAt,
@@ -478,6 +515,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
           other.collapsed == this.collapsed &&
           other.pinned == this.pinned &&
           other.open == this.open &&
+          other.remindAt == this.remindAt &&
           other.blocksJson == this.blocksJson &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
@@ -492,6 +530,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
   final Value<bool> collapsed;
   final Value<bool> pinned;
   final Value<bool> open;
+  final Value<int?> remindAt;
   final Value<String> blocksJson;
   final Value<int> createdAt;
   final Value<int> updatedAt;
@@ -505,6 +544,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     this.collapsed = const Value.absent(),
     this.pinned = const Value.absent(),
     this.open = const Value.absent(),
+    this.remindAt = const Value.absent(),
     this.blocksJson = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -519,6 +559,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     this.collapsed = const Value.absent(),
     this.pinned = const Value.absent(),
     this.open = const Value.absent(),
+    this.remindAt = const Value.absent(),
     required String blocksJson,
     required int createdAt,
     required int updatedAt,
@@ -539,6 +580,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     Expression<bool>? collapsed,
     Expression<bool>? pinned,
     Expression<bool>? open,
+    Expression<int>? remindAt,
     Expression<String>? blocksJson,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
@@ -553,6 +595,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
       if (collapsed != null) 'collapsed': collapsed,
       if (pinned != null) 'pinned': pinned,
       if (open != null) 'open': open,
+      if (remindAt != null) 'remind_at': remindAt,
       if (blocksJson != null) 'blocks_json': blocksJson,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -569,6 +612,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     Value<bool>? collapsed,
     Value<bool>? pinned,
     Value<bool>? open,
+    Value<int?>? remindAt,
     Value<String>? blocksJson,
     Value<int>? createdAt,
     Value<int>? updatedAt,
@@ -583,6 +627,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
       collapsed: collapsed ?? this.collapsed,
       pinned: pinned ?? this.pinned,
       open: open ?? this.open,
+      remindAt: remindAt ?? this.remindAt,
       blocksJson: blocksJson ?? this.blocksJson,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -615,6 +660,9 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     if (open.present) {
       map['open'] = Variable<bool>(open.value);
     }
+    if (remindAt.present) {
+      map['remind_at'] = Variable<int>(remindAt.value);
+    }
     if (blocksJson.present) {
       map['blocks_json'] = Variable<String>(blocksJson.value);
     }
@@ -643,6 +691,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
           ..write('collapsed: $collapsed, ')
           ..write('pinned: $pinned, ')
           ..write('open: $open, ')
+          ..write('remindAt: $remindAt, ')
           ..write('blocksJson: $blocksJson, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -1293,6 +1342,7 @@ typedef $$StickiesTableCreateCompanionBuilder =
       Value<bool> collapsed,
       Value<bool> pinned,
       Value<bool> open,
+      Value<int?> remindAt,
       required String blocksJson,
       required int createdAt,
       required int updatedAt,
@@ -1308,6 +1358,7 @@ typedef $$StickiesTableUpdateCompanionBuilder =
       Value<bool> collapsed,
       Value<bool> pinned,
       Value<bool> open,
+      Value<int?> remindAt,
       Value<String> blocksJson,
       Value<int> createdAt,
       Value<int> updatedAt,
@@ -1356,6 +1407,11 @@ class $$StickiesTableFilterComposer
 
   ColumnFilters<bool> get open => $composableBuilder(
     column: $table.open,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get remindAt => $composableBuilder(
+    column: $table.remindAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1424,6 +1480,11 @@ class $$StickiesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get remindAt => $composableBuilder(
+    column: $table.remindAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get blocksJson => $composableBuilder(
     column: $table.blocksJson,
     builder: (column) => ColumnOrderings(column),
@@ -1477,6 +1538,9 @@ class $$StickiesTableAnnotationComposer
   GeneratedColumn<bool> get open =>
       $composableBuilder(column: $table.open, builder: (column) => column);
 
+  GeneratedColumn<int> get remindAt =>
+      $composableBuilder(column: $table.remindAt, builder: (column) => column);
+
   GeneratedColumn<String> get blocksJson => $composableBuilder(
     column: $table.blocksJson,
     builder: (column) => column,
@@ -1527,6 +1591,7 @@ class $$StickiesTableTableManager
                 Value<bool> collapsed = const Value.absent(),
                 Value<bool> pinned = const Value.absent(),
                 Value<bool> open = const Value.absent(),
+                Value<int?> remindAt = const Value.absent(),
                 Value<String> blocksJson = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
@@ -1540,6 +1605,7 @@ class $$StickiesTableTableManager
                 collapsed: collapsed,
                 pinned: pinned,
                 open: open,
+                remindAt: remindAt,
                 blocksJson: blocksJson,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -1555,6 +1621,7 @@ class $$StickiesTableTableManager
                 Value<bool> collapsed = const Value.absent(),
                 Value<bool> pinned = const Value.absent(),
                 Value<bool> open = const Value.absent(),
+                Value<int?> remindAt = const Value.absent(),
                 required String blocksJson,
                 required int createdAt,
                 required int updatedAt,
@@ -1568,6 +1635,7 @@ class $$StickiesTableTableManager
                 collapsed: collapsed,
                 pinned: pinned,
                 open: open,
+                remindAt: remindAt,
                 blocksJson: blocksJson,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

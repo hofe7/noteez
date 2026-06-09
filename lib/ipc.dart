@@ -19,6 +19,8 @@ abstract final class ToMain {
   static const String closeSticky = 'closeSticky';
   static const String drawerSticky = 'drawerSticky';
   static const String focusSticky = 'focusSticky';
+  static const String setReminder = 'setReminder';
+  static const String clearReminder = 'clearReminder';
 }
 
 /// 메인 → 개별 창 메서드명 (각 창의 기본 채널로 invoke).
@@ -77,6 +79,13 @@ class MainChannel {
 
   Future<void> linkStickies(String a, String b) =>
       _ch.invokeMethod(ToMain.linkStickies, jsonEncode({'a': a, 'b': b}));
+
+  /// 리마인더 설정: atMillis 시각에 그 스티커를 소환(+알림). 기존 예약 대체.
+  Future<void> setReminder(String id, int atMillis) => _ch.invokeMethod(
+      ToMain.setReminder, jsonEncode({'id': id, 'at': atMillis}));
+
+  Future<void> clearReminder(String id) =>
+      _ch.invokeMethod(ToMain.clearReminder, id);
 
   Future<ConnectionResult> getConnection(String id) async =>
       ConnectionResult.parse(await _ch.invokeMethod(ToMain.getConnection, id));

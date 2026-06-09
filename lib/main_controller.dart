@@ -12,6 +12,7 @@ import 'db/database.dart';
 import 'ipc.dart';
 import 'link_graph.dart';
 import 'models/sticky.dart';
+import 'reminder/reminder_scheduler.dart';
 import 'report.dart';
 import 'sticky_search.dart';
 
@@ -27,6 +28,9 @@ class MainController extends ChangeNotifier {
 
   /// 승인된 연결(지식 그래프). 인접/묶음 알고리즘은 LinkGraph 가 담당.
   final LinkGraph _graph = LinkGraph();
+
+  /// 리마인더 타이머. 발화 시 그 스티커를 desk 로 자동 소환(+best-effort 알림).
+  late final ReminderScheduler _reminders = ReminderScheduler(_fireReminder);
 
   /// 검색 팔레트(메인 창)를 열 때마다 틱. 팔레트가 듣고 초기화+포커스.
   final ValueNotifier<int> searchTick = ValueNotifier<int>(0);
@@ -74,8 +78,25 @@ class MainController extends ChangeNotifier {
     await Future.wait(stickies.where((s) => s.open).map(_spawn));
     notifyListeners();
 
+    // 리마인더 예약(창 스폰 후 — 지난 건 즉시 소환되도록 catch-up).
+    for (final s in stickies) {
+      if (s.remindAt != null) _reminders.schedule(s.id, s.remindAt);
+    }
+
     // 백그라운드: 새/바뀐 메모만 임베딩(모델 lazy). 창은 ~1.8초 후 재조회해 채움.
     unawaited(_conn.warmup(List.of(stickies)));
+  }
+
+  /// 리마인더 발화: 그 스티커를 desk 로 소환 + one-shot 으로 remindAt 비움.
+  /// (best-effort 알림은 Phase C 에서 얹음.)
+  Future<void> _fireReminder(String id) async {
+    final i = stickies.indexWhere((e) => e.id == id);
+    if (i == -1) return;
+    stickies[i] = stickies[i].copyWith(clearRemind: true);
+    await _db.upsert(stickies[i]);
+    await showOne(id); // 자동 소환 — 권한 불필요, 항상 동작
+    notifyListeners();
+    _pushOverview();
   }
 
   Future<dynamic> _onCall(MethodCall call) async {
@@ -99,6 +120,7 @@ class MainController extends ChangeNotifier {
         _windows.remove(id);
         _conn.remove(id);
         _graph.remove(id);
+        _reminders.cancel(id);
         await _db.softDelete(id);
         notifyListeners();
         _pushOverview();
@@ -150,6 +172,28 @@ class MainController extends ChangeNotifier {
         _pushOverview();
       case ToMain.focusSticky:
         await showOne(call.arguments as String);
+      case ToMain.setReminder:
+        final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
+        final id = m['id'] as String;
+        final at = m['at'] as int;
+        final i = stickies.indexWhere((e) => e.id == id);
+        if (i != -1) {
+          stickies[i] = stickies[i].copyWith(remindAt: at);
+          await _db.upsert(stickies[i]);
+          _reminders.schedule(id, at);
+          notifyListeners();
+          _pushOverview();
+        }
+      case ToMain.clearReminder:
+        final id = call.arguments as String;
+        _reminders.cancel(id);
+        final i = stickies.indexWhere((e) => e.id == id);
+        if (i != -1) {
+          stickies[i] = stickies[i].copyWith(clearRemind: true);
+          await _db.upsert(stickies[i]);
+          notifyListeners();
+          _pushOverview();
+        }
     }
     return null;
   }

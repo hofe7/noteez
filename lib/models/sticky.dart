@@ -94,6 +94,7 @@ class Sticky {
   final bool collapsed;
   final bool pinned; // 항상 위에 고정
   final bool open; // 책상 위(창 열림) vs 서랍(닫힘, 데이터 유지)
+  final int? remindAt; // 리마인더 시각(millis). null=없음. 발화 후 null로 비움(one-shot)
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -106,6 +107,7 @@ class Sticky {
     this.collapsed = false,
     this.pinned = false,
     this.open = true,
+    this.remindAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -118,6 +120,8 @@ class Sticky {
     bool? collapsed,
     bool? pinned,
     bool? open,
+    int? remindAt,
+    bool clearRemind = false,
     DateTime? updatedAt,
   }) =>
       Sticky(
@@ -129,6 +133,7 @@ class Sticky {
         collapsed: collapsed ?? this.collapsed,
         pinned: pinned ?? this.pinned,
         open: open ?? this.open,
+        remindAt: clearRemind ? null : (remindAt ?? this.remindAt),
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -141,6 +146,7 @@ class Sticky {
         'collapsed': collapsed,
         'pinned': pinned,
         'open': open,
+        'remindAt': remindAt,
         'createdAt': createdAt.millisecondsSinceEpoch,
         'updatedAt': updatedAt.millisecondsSinceEpoch,
         'blocks': blocks.map((b) => b.toJson()).toList(),
@@ -154,6 +160,7 @@ class Sticky {
         collapsed: j['collapsed'] as bool? ?? false,
         pinned: j['pinned'] as bool? ?? false,
         open: j['open'] as bool? ?? true,
+        remindAt: j['remindAt'] as int?,
         createdAt: DateTime.fromMillisecondsSinceEpoch(j['createdAt'] as int),
         updatedAt: DateTime.fromMillisecondsSinceEpoch(j['updatedAt'] as int),
         blocks: (j['blocks'] as List)
