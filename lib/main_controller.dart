@@ -12,6 +12,7 @@ import 'db/database.dart';
 import 'ipc.dart';
 import 'link_graph.dart';
 import 'models/sticky.dart';
+import 'reminder/notifier.dart';
 import 'reminder/reminder_scheduler.dart';
 import 'report.dart';
 import 'sticky_search.dart';
@@ -29,8 +30,9 @@ class MainController extends ChangeNotifier {
   /// 승인된 연결(지식 그래프). 인접/묶음 알고리즘은 LinkGraph 가 담당.
   final LinkGraph _graph = LinkGraph();
 
-  /// 리마인더 타이머. 발화 시 그 스티커를 desk 로 자동 소환(+best-effort 알림).
+  /// 리마인더 타이머. 발화 시 알림(best-effort) 또는 자동 소환.
   late final ReminderScheduler _reminders = ReminderScheduler(_fireReminder);
+  final ReminderNotifier _notifier = ReminderNotifier();
 
   /// 검색 팔레트(메인 창)를 열 때마다 틱. 팔레트가 듣고 초기화+포커스.
   final ValueNotifier<int> searchTick = ValueNotifier<int>(0);
@@ -78,7 +80,10 @@ class MainController extends ChangeNotifier {
     await Future.wait(stickies.where((s) => s.open).map(_spawn));
     notifyListeners();
 
-    // 리마인더 예약(창 스폰 후 — 지난 건 즉시 소환되도록 catch-up).
+    // 알림 권한 요청(best-effort). 클릭 시 그 스티커 소환. 불가하면 자동 소환 폴백.
+    await _notifier.init(showOne);
+
+    // 리마인더 예약(창 스폰 후 — 지난 건 즉시 발화되도록 catch-up).
     for (final s in stickies) {
       if (s.remindAt != null) _reminders.schedule(s.id, s.remindAt);
     }
@@ -92,9 +97,14 @@ class MainController extends ChangeNotifier {
   Future<void> _fireReminder(String id) async {
     final i = stickies.indexWhere((e) => e.id == id);
     if (i == -1) return;
-    stickies[i] = stickies[i].copyWith(clearRemind: true);
-    await _db.upsert(stickies[i]);
-    await showOne(id); // 자동 소환 — 권한 불필요, 항상 동작
+    final s = stickies[i] = stickies[i].copyWith(clearRemind: true);
+    await _db.upsert(s);
+    // 알림 가능하면 알림(클릭 시 소환), 아니면 자동 소환 폴백(권한 불필요, 항상 동작).
+    if (_notifier.granted) {
+      await _notifier.show(id, '⏰ ${s.preview}', '리마인더');
+    } else {
+      await showOne(id, focus: false); // 폴백: 떠오르되 커서는 안 뺏음
+    }
     notifyListeners();
     _pushOverview();
   }
@@ -252,14 +262,17 @@ class MainController extends ChangeNotifier {
   }
 
   /// 특정 스티커 창을 앞으로. 닫혀있던(서랍) 메모면 다시 열어서(spawn) 소환.
-  Future<void> showOne(String id) async {
+  /// [focus]=false 면 창만 떠오르고 편집 커서는 안 뺏는다(리마인더 자동 소환용 —
+  /// 작업 중 방해 최소화).
+  Future<void> showOne(String id, {bool focus = true}) async {
     final wc = _windows[id];
     if (wc != null) {
       await wc.show();
-      // 이미 열린 창: 바로 편집할 수 있게 마지막 줄에 커서.
-      try {
-        await wc.invokeMethod(ToWindow.focusEditor);
-      } catch (_) {/* 핸들러 아직 미등록 등 — 무시 */}
+      if (focus) {
+        try {
+          await wc.invokeMethod(ToWindow.focusEditor);
+        } catch (_) {/* 핸들러 아직 미등록 등 — 무시 */}
+      }
       return;
     }
     final i = stickies.indexWhere((e) => e.id == id);
@@ -268,8 +281,8 @@ class MainController extends ChangeNotifier {
       stickies[i] = stickies[i].copyWith(open: true);
       await _db.upsert(stickies[i]);
     }
-    // 닫혀있던 창: 새로 띄우면서 포커스 플래그 전달(핸들러 등록 타이밍 회피).
-    await _spawn(stickies[i], focusOnOpen: true);
+    // 닫혀있던 창: 새로 띄움. focusOnOpen 으로 커서 포커스 여부 전달.
+    await _spawn(stickies[i], focusOnOpen: focus);
     notifyListeners();
     _pushOverview();
   }
