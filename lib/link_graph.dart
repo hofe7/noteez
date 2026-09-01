@@ -9,6 +9,14 @@ class LinkGraph {
     (_adj[b] ??= <String>{}).add(a);
   }
 
+  /// 무방향 엣지 하나 제거. 마지막 이웃이 사라진 노드는 인접 맵에서도 정리한다.
+  void removeEdge(String a, String b) {
+    _adj[a]?.remove(b);
+    _adj[b]?.remove(a);
+    if (_adj[a]?.isEmpty ?? false) _adj.remove(a);
+    if (_adj[b]?.isEmpty ?? false) _adj.remove(b);
+  }
+
   /// 노드와 그에 닿는 모든 엣지 제거.
   void remove(String id) {
     _adj.remove(id);

@@ -18,8 +18,10 @@ class ControlWindow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Noteez',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+              const Text(
+                'Noteez',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+              ),
               const SizedBox(height: 2),
               AnimatedBuilder(
                 animation: mainController,
@@ -33,6 +35,30 @@ class ControlWindow extends StatelessWidget {
                 onPressed: () => mainController.addSticky(),
                 icon: const Icon(Icons.add),
                 label: const Text('새 메모'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => mainController.importMarkdownFiles(),
+                icon: const Icon(Icons.file_open_outlined),
+                label: const Text('Markdown 가져오기'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => mainController.importMarkdownFolder(),
+                icon: const Icon(Icons.folder_open_outlined),
+                label: const Text('Markdown 폴더 가져오기'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => mainController.importNotionZip(),
+                icon: const Icon(Icons.archive_outlined),
+                label: const Text('Notion ZIP 가져오기'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => mainController.exportAllMarkdown(),
+                icon: const Icon(Icons.file_download_outlined),
+                label: const Text('Markdown 내보내기'),
               ),
               const Spacer(),
               const Text(

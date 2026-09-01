@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' hide Block;
+import 'package:flutter_quill/quill_delta.dart';
 
 import '../models/sticky.dart';
 import 'note_delta.dart';
@@ -37,6 +38,7 @@ class NoteEditorState extends State<NoteEditor> {
   final FocusNode _focus = FocusNode();
   final ScrollController _scroll = ScrollController();
   late List<Block> _prev;
+  bool _stampingMetadata = false;
 
   QuillController get controller => _controller;
 
@@ -54,7 +56,9 @@ class NoteEditorState extends State<NoteEditor> {
   void initState() {
     super.initState();
     _prev = widget.initial;
-    final doc = Document.fromJson(NoteDelta.fromBlocks(widget.initial).toJson());
+    final doc = Document.fromJson(
+      NoteDelta.fromBlocks(widget.initial).toJson(),
+    );
     _controller = QuillController(
       document: doc,
       selection: const TextSelection.collapsed(offset: 0),
@@ -99,27 +103,72 @@ class NoteEditorState extends State<NoteEditor> {
   }
 
   void _onChange() {
+    if (_stampingMetadata) return;
     final blocks = NoteDelta.toBlocks(_controller.document.toDelta());
-    final merged = _mergeCompleted(blocks, _prev);
+    final identified = NoteDelta.reconcileIdentities(blocks, _prev);
+    final merged = NoteDelta.mergeMetadata(identified, _prev);
+    _stampMetadata(merged);
     _prev = merged;
     widget.onChanged(merged);
   }
 
-  // 체크된 todo의 완료시각 보존: 직전에 같은 텍스트로 체크돼 있던 todo면 그 시각 유지,
-  // 아니면(새로 체크) now.
-  List<Block> _mergeCompleted(List<Block> nw, List<Block> old) {
-    final wasChecked = <String, int?>{};
-    for (final b in old) {
-      if (b is TodoBlock && b.checked) wasChecked[b.text] = b.completedAt;
+  /// 새 줄에는 아직 Noteez id가 없다. 현재 Delta의 각 줄 끝 개행에 안정적인 id와
+  /// todo 완료시각을 심는다. 화면용 속성이 아니며 listener 알림도 생략해 재귀
+  /// onChanged를 막는다.
+  void _stampMetadata(List<Block> blocks) {
+    final delta = _controller.document.toDelta();
+    final changes = <({int offset, Map<String, dynamic> attributes})>[];
+    var offset = 0;
+    var blockIndex = 0;
+    for (final op in delta.toList()) {
+      final data = op.data;
+      if (data is! String) {
+        offset += 1; // embed length
+        continue;
+      }
+      var from = 0;
+      while (true) {
+        final nl = data.indexOf('\n', from);
+        if (nl == -1) break;
+        if (blockIndex >= blocks.length) return;
+        final block = blocks[blockIndex++];
+        final attrs = op.attributes;
+        final patch = <String, dynamic>{};
+        if (attrs?[NoteDelta.idAttributeKey] != block.id) {
+          patch[NoteDelta.idAttributeKey] = block.id;
+        }
+        final completed = block is TodoBlock && block.checked
+            ? block.completedAt
+            : null;
+        if (attrs?[NoteDelta.completedAtAttributeKey] != completed) {
+          patch[NoteDelta.completedAtAttributeKey] = completed;
+        }
+        if (patch.isNotEmpty) {
+          changes.add((offset: offset + nl, attributes: patch));
+        }
+        from = nl + 1;
+      }
+      offset += data.length;
     }
-    final now = DateTime.now().millisecondsSinceEpoch;
-    return [
-      for (final b in nw)
-        if (b is TodoBlock && b.checked)
-          b.copyWith(completedAt: wasChecked[b.text] ?? now)
-        else
-          b
-    ];
+    if (changes.isEmpty) return;
+
+    // Quill format rule은 사용자 정의 ignore attribute를 받지 않으므로 raw Delta
+    // retain으로 메타데이터만 합성한다. remote source라 undo 스택에 사용자 편집으로
+    // 쌓이지 않으며, guard가 합성 알림의 재귀 처리를 막는다.
+    final metadata = Delta();
+    var cursor = 0;
+    for (final change in changes) {
+      final gap = change.offset - cursor;
+      if (gap > 0) metadata.retain(gap);
+      metadata.retain(1, change.attributes);
+      cursor = change.offset + 1;
+    }
+    _stampingMetadata = true;
+    try {
+      _controller.compose(metadata, _controller.selection, ChangeSource.remote);
+    } finally {
+      _stampingMetadata = false;
+    }
   }
 
   @override
@@ -155,11 +204,11 @@ class NoteEditorState extends State<NoteEditor> {
         // 본문 메트릭(_stickyStyles)에서 전부 결정 → 체크/미체크가 픽셀까지 동일.
         customStyleBuilder: (attr) =>
             (attr.key == Attribute.list.key && attr.value == 'checked')
-                ? const TextStyle(
-                    decoration: TextDecoration.lineThrough,
-                    color: Colors.black45,
-                  )
-                : const TextStyle(),
+            ? const TextStyle(
+                decoration: TextDecoration.lineThrough,
+                color: Colors.black45,
+              )
+            : const TextStyle(),
         embedBuilders: [LocalImageEmbedBuilder()],
       ),
     );
@@ -171,19 +220,19 @@ class NoteEditorState extends State<NoteEditor> {
 /// 공개 컨트롤러 API로 재구현. (디스패처는 줄 텍스트가 character와 정확히 일치할
 /// 때만 호출하므로 줄 시작 전용 + 오발동 없음.)
 SpaceShortcutEvent _todoShortcut(String phrase) => SpaceShortcutEvent(
-      character: phrase,
-      handler: (node, controller) {
-        final base = controller.selection.baseOffset;
-        // 트리거 문구를 지우고(줄이 비워짐) 현재 줄을 체크리스트(미체크)로 포맷.
-        controller.replaceText(base - phrase.length, phrase.length, '', null);
-        controller.updateSelection(
-          TextSelection.collapsed(offset: base - phrase.length),
-          ChangeSource.local,
-        );
-        controller.formatSelection(Attribute.unchecked);
-        return true;
-      },
+  character: phrase,
+  handler: (node, controller) {
+    final base = controller.selection.baseOffset;
+    // 트리거 문구를 지우고(줄이 비워짐) 현재 줄을 체크리스트(미체크)로 포맷.
+    controller.replaceText(base - phrase.length, phrase.length, '', null);
+    controller.updateSelection(
+      TextSelection.collapsed(offset: base - phrase.length),
+      ChangeSource.local,
     );
+    controller.formatSelection(Attribute.unchecked);
+    return true;
+  },
+);
 
 /// NoteEditor에 주입하는 스페이스 단축 목록 (현재는 체크박스 2종).
 final List<SpaceShortcutEvent> noteSpaceShortcuts = [
@@ -209,29 +258,37 @@ DefaultStyles _stickyStyles(BuildContext context, Color accent) {
   // 불변(이전엔 블록당 2+2px가 끼어 토글 시 4px씩 튀었음).
   const tightV = VerticalSpacing(0, 0);
   const tightLine = VerticalSpacing(0, 0);
-  return base.merge(DefaultStyles(
-    paragraph: DefaultTextBlockStyle(
-        text, base.paragraph!.horizontalSpacing, tightV, tightLine, null),
-    lists: DefaultListBlockStyle(
-      text,
-      base.lists!.horizontalSpacing,
-      tightV,
-      tightLine,
-      null,
-      _MiniCheckbox(accent),
-      // 체크리스트 거터를 좁힘(기본 fontSize*2=28 → 22) — 체크박스 좌측 여백 축소.
-      indentWidthBuilder: (block, context, count, npb) =>
-          const HorizontalSpacing(22, 0),
-    ),
-    // 플레이스홀더는 본문과 같은 메트릭(even 없음, 여백 0) — 첫 글자 입력 시 줄이
-    // 튀지 않게 한다.
-    placeHolder: DefaultTextBlockStyle(
+  return base.merge(
+    DefaultStyles(
+      paragraph: DefaultTextBlockStyle(
+        text,
+        base.paragraph!.horizontalSpacing,
+        tightV,
+        tightLine,
+        null,
+      ),
+      lists: DefaultListBlockStyle(
+        text,
+        base.lists!.horizontalSpacing,
+        tightV,
+        tightLine,
+        null,
+        _MiniCheckbox(accent),
+        // 체크리스트 거터를 좁힘(기본 fontSize*2=28 → 22) — 체크박스 좌측 여백 축소.
+        indentWidthBuilder: (block, context, count, npb) =>
+            const HorizontalSpacing(22, 0),
+      ),
+      // 플레이스홀더는 본문과 같은 메트릭(even 없음, 여백 0) — 첫 글자 입력 시 줄이
+      // 튀지 않게 한다.
+      placeHolder: DefaultTextBlockStyle(
         const TextStyle(fontSize: 14, height: 1.3, color: Color(0x42000000)),
         base.placeHolder!.horizontalSpacing,
         tightV,
         tightLine,
-        null),
-  ));
+        null,
+      ),
+    ),
+  );
 }
 
 /// 미니멀 체크박스 — 기존 스티커 디자인(16×16 둥근 사각 + 체크) + 포스트잇 색조 잉크.
@@ -270,9 +327,11 @@ class _MiniCheckbox extends QuillCheckboxBuilder {
             ),
             // 체크/미체크 모두 Icon을 둔다(미체크는 투명) → leading 메트릭이 같아
             // 토글 시 줄이 위아래로 튀지 않음.
-            child: Icon(Icons.check,
-                size: 11,
-                color: isChecked ? Colors.white : Colors.transparent),
+            child: Icon(
+              Icons.check,
+              size: 11,
+              color: isChecked ? Colors.white : Colors.transparent,
+            ),
           ),
         ),
       ),
@@ -301,8 +360,10 @@ class LocalImageEmbedBuilder extends EmbedBuilder {
             height: 44,
             alignment: Alignment.center,
             color: const Color(0x11000000),
-            child: const Text('이미지를 불러올 수 없어요',
-                style: TextStyle(fontSize: 11, color: Colors.black38)),
+            child: const Text(
+              '이미지를 불러올 수 없어요',
+              style: TextStyle(fontSize: 11, color: Colors.black38),
+            ),
           ),
         ),
       ),

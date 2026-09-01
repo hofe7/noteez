@@ -20,6 +20,15 @@ void main() {
       expect(g.neighbors('c'), isEmpty);
     });
 
+    test('removeEdge 는 양방향 엣지와 빈 노드를 제거', () {
+      final g = LinkGraph()..addEdge('a', 'b');
+      g.removeEdge('a', 'b');
+      expect(g.neighbors('a'), isEmpty);
+      expect(g.neighbors('b'), isEmpty);
+      expect(g.contains('a'), isFalse);
+      expect(g.uniqueEdges(), isEmpty);
+    });
+
     test('uniqueEdges 는 중복 없는 무방향 쌍', () {
       final g = LinkGraph()
         ..addEdge('a', 'b')
@@ -41,8 +50,8 @@ void main() {
         ..addEdge('b', 'd')
         // 묶음2: x-y (각 degree 1)
         ..addEdge('x', 'y')
-        // 고립 엣지 없음(단일 노드는 클러스터 아님)
-        ;
+      // 고립 엣지 없음(단일 노드는 클러스터 아님)
+      ;
       final cl = g.clusters();
       expect(cl.length, 2);
       expect(cl[0].length, 4, reason: '큰 묶음 먼저');

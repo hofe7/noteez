@@ -45,6 +45,10 @@ dependencies:
   pasteboard: ^0.5.0
   flutter_quill: ^11.5.0
   flutter_local_notifications: ^19.4.2 # 리마인더 알림(best-effort)
+  file_selector: ^1.1.0
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  archive: ^4.2.0
 
 dev_dependencies:
   flutter_test:

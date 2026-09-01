@@ -56,7 +56,7 @@ Future<void> main(List<String> args) async {
       runApp(const SearchPaletteApp());
     } else {
       windowManager.waitUntilReadyToShow(
-        const WindowOptions(size: Size(300, 220), center: true),
+        const WindowOptions(size: Size(360, 420), center: true),
         () async {
           await windowManager.setTitle('Noteez');
           await windowManager.show();
@@ -87,6 +87,9 @@ Future<void> main(List<String> args) async {
   if (m['kind'] == 'overview') {
     final notes = (m['notes'] as List).cast<Map<String, dynamic>>();
     final edges = (m['edges'] as List).cast<Map<String, dynamic>>();
+    final suggestedGroups = ((m['suggestedGroups'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>();
+    final notice = m['notice'] as String?;
     windowManager.waitUntilReadyToShow(
       const WindowOptions(size: Size(460, 640), center: true),
       () async {
@@ -94,7 +97,14 @@ Future<void> main(List<String> args) async {
         await windowManager.show();
       },
     );
-    runApp(OverviewWindowApp(notes: notes, edges: edges));
+    runApp(
+      OverviewWindowApp(
+        notes: notes,
+        edges: edges,
+        suggestedGroups: suggestedGroups,
+        notice: notice,
+      ),
+    );
     return;
   }
 

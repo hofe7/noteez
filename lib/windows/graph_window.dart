@@ -12,10 +12,18 @@ import '../sticky_palette.dart';
 /// 전체 보기: 라이브러리 창. 모든 메모(열림 + 서랍)를 묶음 + 그 외로 정리하고
 /// 필터/정렬/상태로 추려서 본다. 검색 팔레트가 '빠른 찾기'라면 이건 '둘러보기·정리'.
 class OverviewWindowApp extends StatelessWidget {
-  final List<Map<String, dynamic>> notes; // {id,label,color,open,updatedAt,createdAt}
+  final List<Map<String, dynamic>>
+  notes; // {id,label,color,open,updatedAt,createdAt}
   final List<Map<String, dynamic>> edges; // {a,b}
-  const OverviewWindowApp(
-      {super.key, required this.notes, required this.edges});
+  final List<Map<String, dynamic>> suggestedGroups; // {ids:[...],score}
+  final String? notice;
+  const OverviewWindowApp({
+    super.key,
+    required this.notes,
+    required this.edges,
+    required this.suggestedGroups,
+    this.notice,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +31,12 @@ class OverviewWindowApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: '전체 보기',
       theme: noteezTheme(),
-      home: OverviewWindow(notes: notes, edges: edges),
+      home: OverviewWindow(
+        notes: notes,
+        edges: edges,
+        suggestedGroups: suggestedGroups,
+        notice: notice,
+      ),
     );
   }
 }
@@ -35,7 +48,15 @@ enum _Sort { recent, created, name }
 class OverviewWindow extends StatefulWidget {
   final List<Map<String, dynamic>> notes;
   final List<Map<String, dynamic>> edges;
-  const OverviewWindow({super.key, required this.notes, required this.edges});
+  final List<Map<String, dynamic>> suggestedGroups;
+  final String? notice;
+  const OverviewWindow({
+    super.key,
+    required this.notes,
+    required this.edges,
+    required this.suggestedGroups,
+    this.notice,
+  });
 
   @override
   State<OverviewWindow> createState() => _OverviewWindowState();
@@ -53,6 +74,8 @@ class _OverviewWindowState extends State<OverviewWindow> {
   // 메인이 push 하는 최신 데이터로 갱신 (창 껐다 켤 필요 없게).
   late List<Map<String, dynamic>> _notes = widget.notes;
   late List<Map<String, dynamic>> _edges = widget.edges;
+  late List<Map<String, dynamic>> _suggestedGroups = widget.suggestedGroups;
+  late String? _notice = widget.notice;
 
   @override
   void initState() {
@@ -60,10 +83,14 @@ class _OverviewWindowState extends State<OverviewWindow> {
     WindowController.fromCurrentEngine().then((c) {
       c.setWindowMethodHandler((call) async {
         if (call.method == ToWindow.refresh && mounted) {
-          final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
+          final m =
+              jsonDecode(call.arguments as String) as Map<String, dynamic>;
           setState(() {
             _notes = (m['notes'] as List).cast<Map<String, dynamic>>();
             _edges = (m['edges'] as List).cast<Map<String, dynamic>>();
+            _suggestedGroups = ((m['suggestedGroups'] as List?) ?? const [])
+                .cast<Map<String, dynamic>>();
+            if (m['notice'] is String) _notice = m['notice'] as String;
           });
         }
         return null;
@@ -87,17 +114,15 @@ class _OverviewWindowState extends State<OverviewWindow> {
   }
 
   int _cmp(Map<String, dynamic> a, Map<String, dynamic> b) => switch (_sort) {
-        _Sort.recent =>
-          (b['updatedAt'] as int).compareTo(a['updatedAt'] as int),
-        _Sort.created =>
-          (b['createdAt'] as int).compareTo(a['createdAt'] as int),
-        _Sort.name => (a['label'] as String).compareTo(b['label'] as String),
-      };
+    _Sort.recent => (b['updatedAt'] as int).compareTo(a['updatedAt'] as int),
+    _Sort.created => (b['createdAt'] as int).compareTo(a['createdAt'] as int),
+    _Sort.name => (a['label'] as String).compareTo(b['label'] as String),
+  };
 
   // 묶음(연결요소) + 묶인 id 집합. 그래프 알고리즘은 LinkGraph(순수, 단위테스트됨)
   // 재사용 — 별 isolate라 edges 만 받지만 LinkGraph 는 의존성이 없어 그대로 쓴다.
   ({List<List<Map<String, dynamic>>> clusters, Set<String> grouped})
-      _grouped() {
+  _grouped() {
     final byId = {for (final n in _notes) n['id'] as String: n};
     final graph = LinkGraph();
     for (final e in _edges) {
@@ -107,9 +132,9 @@ class _OverviewWindowState extends State<OverviewWindow> {
     final grouped = <String>{};
     for (final comp in graph.clusters()) {
       // 삭제된(목록에 없는) id 제거 후 2 미만이면 묶음 아님.
-      final members = [for (final id in comp) byId[id]]
-          .whereType<Map<String, dynamic>>()
-          .toList();
+      final members = [
+        for (final id in comp) byId[id],
+      ].whereType<Map<String, dynamic>>().toList();
       if (members.length < 2) continue;
       grouped.addAll(members.map((m) => m['id'] as String));
       clusters.add(members);
@@ -119,20 +144,59 @@ class _OverviewWindowState extends State<OverviewWindow> {
     return (clusters: clusters, grouped: grouped);
   }
 
+  // 임베딩 엔진이 계산한 읽기 전용 추천 묶음. 삭제된 id와 확정 묶음 id는
+  // 방어적으로 한 번 더 제거한다.
+  ({List<List<Map<String, dynamic>>> clusters, Set<String> grouped}) _suggested(
+    Set<String> confirmed,
+  ) {
+    final byId = {for (final n in _notes) n['id'] as String: n};
+    final clusters = <List<Map<String, dynamic>>>[];
+    final grouped = <String>{};
+    for (final raw in _suggestedGroups) {
+      final ids = (raw['ids'] as List).cast<String>();
+      final members = [
+        for (final id in ids)
+          if (!confirmed.contains(id) && !grouped.contains(id)) byId[id],
+      ].whereType<Map<String, dynamic>>().toList();
+      if (members.length < 2) continue;
+      grouped.addAll(members.map((m) => m['id'] as String));
+      clusters.add(members);
+    }
+    return (clusters: clusters, grouped: grouped);
+  }
+
   @override
   Widget build(BuildContext context) {
     final g = _grouped();
+    final suggested = _suggested(g.grouped);
     // 필터/정렬 적용.
     final visibleClusters = [
       for (final c in g.clusters)
         if (c.where(_matches).toList() case final m when m.isNotEmpty)
           m..sort(_cmp),
     ];
-    final ungrouped = _notes
-        .where((n) => !g.grouped.contains(n['id']) && _matches(n))
-        .toList()
-      ..sort(_cmp);
-    final shown = visibleClusters.fold<int>(0, (s, c) => s + c.length) +
+    final visibleSuggested = [
+      for (final c in suggested.clusters)
+        if (c.where(_matches).toList() case final m when m.isNotEmpty)
+          (
+            title: c.first['label'] as String,
+            members: m..sort(_cmp),
+            ids: c.map((n) => n['id'] as String).toList(),
+          ),
+    ];
+    final ungrouped =
+        _notes
+            .where(
+              (n) =>
+                  !g.grouped.contains(n['id']) &&
+                  !suggested.grouped.contains(n['id']) &&
+                  _matches(n),
+            )
+            .toList()
+          ..sort(_cmp);
+    final shown =
+        visibleClusters.fold<int>(0, (s, c) => s + c.length) +
+        visibleSuggested.fold<int>(0, (s, c) => s + c.members.length) +
         ungrouped.length;
 
     return Scaffold(
@@ -141,8 +205,9 @@ class _OverviewWindowState extends State<OverviewWindow> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _header(g.clusters.length),
+            _header(g.clusters.length, suggested.clusters.length),
             _controls(),
+            if (_notice != null) _noticeBanner(),
             const Divider(height: 1, color: AppColors.hair),
             Expanded(
               child: (shown == 0)
@@ -152,6 +217,15 @@ class _OverviewWindowState extends State<OverviewWindow> {
                       children: [
                         for (final c in visibleClusters) ...[
                           _clusterCard(c),
+                          const SizedBox(height: 14),
+                        ],
+                        for (final c in visibleSuggested) ...[
+                          _clusterCard(
+                            c.members,
+                            suggested: true,
+                            suggestedTitle: c.title,
+                            actionIds: c.ids,
+                          ),
                           const SizedBox(height: 14),
                         ],
                         if (ungrouped.isNotEmpty) _ungroupedSection(ungrouped),
@@ -164,7 +238,39 @@ class _OverviewWindowState extends State<OverviewWindow> {
     );
   }
 
-  Widget _header(int clusterCount) {
+  Widget _noticeBanner() => Container(
+    margin: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+    padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+    decoration: BoxDecoration(
+      color: AppColors.accentTint(0.13),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: AppColors.accentTint(0.28)),
+    ),
+    child: Row(
+      children: [
+        const Icon(
+          Icons.check_circle_outline_rounded,
+          size: 16,
+          color: _accent,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            _notice!,
+            style: const TextStyle(fontSize: 12.5, color: AppColors.ink2),
+          ),
+        ),
+        IconButton(
+          onPressed: () => setState(() => _notice = null),
+          tooltip: '닫기',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.close_rounded, size: 16),
+        ),
+      ],
+    ),
+  );
+
+  Widget _header(int clusterCount, int suggestionCount) {
     final total = _notes.length;
     final drawer = _notes.where((n) => n['open'] != true).length;
     return Padding(
@@ -172,15 +278,20 @@ class _OverviewWindowState extends State<OverviewWindow> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('전체 보기',
-              style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.4,
-                  color: AppColors.ink)),
+          const Text(
+            '전체 보기',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.4,
+              color: AppColors.ink,
+            ),
+          ),
           const SizedBox(height: 3),
-          Text('메모 $total개 · 묶음 $clusterCount개 · 서랍 $drawer개',
-              style: const TextStyle(fontSize: 12.5, color: AppColors.ink3)),
+          Text(
+            '메모 $total개 · 묶음 $clusterCount개 · 추천 $suggestionCount개 · 서랍 $drawer개',
+            style: const TextStyle(fontSize: 12.5, color: AppColors.ink3),
+          ),
         ],
       ),
     );
@@ -245,10 +356,10 @@ class _OverviewWindowState extends State<OverviewWindow> {
 
   Widget _sortMenu() {
     String label(_Sort s) => switch (s) {
-          _Sort.recent => '최근 수정',
-          _Sort.created => '만든 날짜',
-          _Sort.name => '이름',
-        };
+      _Sort.recent => '최근 수정',
+      _Sort.created => '만든 날짜',
+      _Sort.name => '이름',
+    };
     return PopupMenuButton<_Sort>(
       initialValue: _sort,
       onSelected: (s) => setState(() => _sort = s),
@@ -267,11 +378,16 @@ class _OverviewWindowState extends State<OverviewWindow> {
         ),
         child: Row(
           children: [
-            const Icon(Icons.swap_vert_rounded,
-                size: 16, color: Colors.black45),
+            const Icon(
+              Icons.swap_vert_rounded,
+              size: 16,
+              color: Colors.black45,
+            ),
             const SizedBox(width: 5),
-            Text(label(_sort),
-                style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
+            Text(
+              label(_sort),
+              style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+            ),
           ],
         ),
       ),
@@ -289,23 +405,36 @@ class _OverviewWindowState extends State<OverviewWindow> {
           color: on ? _accent.withValues(alpha: 0.16) : const Color(0x07000000),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-              color: on ? _accent.withValues(alpha: 0.4) : const Color(0x0F000000)),
+            color: on
+                ? _accent.withValues(alpha: 0.4)
+                : const Color(0x0F000000),
+          ),
         ),
-        child: Text(text,
-            style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: on ? FontWeight.w700 : FontWeight.w400,
-                color: on ? AppColors.accentInk : AppColors.ink2)),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: on ? FontWeight.w700 : FontWeight.w400,
+            color: on ? AppColors.accentInk : AppColors.ink2,
+          ),
+        ),
       ),
     );
   }
 
-  Widget _clusterCard(List<Map<String, dynamic>> members) {
+  Widget _clusterCard(
+    List<Map<String, dynamic>> members, {
+    bool suggested = false,
+    String? suggestedTitle,
+    List<String> actionIds = const [],
+  }) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: suggested ? AppColors.accentTint(0.035) : AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(
+          color: suggested ? AppColors.accentTint(0.28) : AppColors.border,
+        ),
         boxShadow: kCardShadow,
       ),
       clipBehavior: Clip.antiAlias,
@@ -316,18 +445,51 @@ class _OverviewWindowState extends State<OverviewWindow> {
             padding: const EdgeInsets.fromLTRB(16, 12, 14, 8),
             child: Row(
               children: [
+                if (suggested) ...[
+                  const Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 14,
+                    color: _accent,
+                  ),
+                  const SizedBox(width: 7),
+                ],
                 Expanded(
                   child: Text(
-                    members.first['label'] as String,
+                    suggested
+                        ? '${suggestedTitle ?? members.first['label']} 관련'
+                        : members.first['label'] as String,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2),
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
+                if (suggested) ...[
+                  Text(
+                    '추천',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.accentInk.withValues(alpha: 0.75),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  _clusterAction(
+                    Icons.done_all_rounded,
+                    '묶음으로 확정',
+                    () => _main.linkGroup(actionIds),
+                  ),
+                  _clusterAction(
+                    Icons.close_rounded,
+                    '이 추천 숨기기',
+                    () => _main.dismissSuggestions(actionIds),
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 _countBadge(members.length),
               ],
             ),
@@ -339,18 +501,34 @@ class _OverviewWindowState extends State<OverviewWindow> {
     );
   }
 
+  Widget _clusterAction(IconData icon, String tooltip, VoidCallback onTap) =>
+      Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(7),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Icon(icon, size: 15, color: AppColors.ink3),
+          ),
+        ),
+      );
+
   Widget _ungroupedSection(List<Map<String, dynamic>> notes) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Padding(
           padding: EdgeInsets.fromLTRB(6, 6, 6, 6),
-          child: Text('그 외',
-              style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black45,
-                  letterSpacing: -0.2)),
+          child: Text(
+            '그 외',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: Colors.black45,
+              letterSpacing: -0.2,
+            ),
+          ),
         ),
         Container(
           decoration: BoxDecoration(
@@ -402,24 +580,33 @@ class _OverviewWindowState extends State<OverviewWindow> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                                fontSize: 14, color: Colors.black87),
+                              fontSize: 14,
+                              color: Colors.black87,
+                            ),
                           ),
                         ),
                         if (closed) ...[
                           const SizedBox(width: 6),
-                          const Icon(Icons.inventory_2_outlined,
-                              size: 11, color: Colors.black38),
+                          const Icon(
+                            Icons.inventory_2_outlined,
+                            size: 11,
+                            color: Colors.black38,
+                          ),
                         ],
                       ],
                     ),
                     const SizedBox(height: 1),
                     Text(
                       relativeDate(
-                          DateTime.fromMillisecondsSinceEpoch(
-                              m['updatedAt'] as int),
-                          _now),
-                      style:
-                          const TextStyle(fontSize: 10.5, color: Colors.black38),
+                        DateTime.fromMillisecondsSinceEpoch(
+                          m['updatedAt'] as int,
+                        ),
+                        _now,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        color: Colors.black38,
+                      ),
                     ),
                   ],
                 ),
@@ -453,22 +640,29 @@ class _OverviewWindowState extends State<OverviewWindow> {
   }
 
   Widget _countBadge(int n) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-        decoration: BoxDecoration(
-          color: _accent.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text('$n',
-            style: const TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w700, color: _accent)),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+    decoration: BoxDecoration(
+      color: _accent.withValues(alpha: 0.14),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(
+      '$n',
+      style: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+        color: _accent,
+      ),
+    ),
+  );
 
   Widget _empty() => const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text('조건에 맞는 메모가 없어요.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.black45)),
-        ),
-      );
+    child: Padding(
+      padding: EdgeInsets.all(32),
+      child: Text(
+        '조건에 맞는 메모가 없어요.',
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 14, color: Colors.black45),
+      ),
+    ),
+  );
 }

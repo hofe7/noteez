@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -72,17 +73,22 @@ class MenubarController with TrayListener {
   }
 
   Menu _menu() => Menu(
-        items: [
-          MenuItem(key: 'new', label: '새 메모   ⌘⇧N'),
-          MenuItem(key: 'capture', label: '빠른 캡처   ⌘⇧Space'),
-          MenuItem(key: 'search', label: '검색   ⌘⇧K'),
-          MenuItem(key: 'report', label: '내가 한 일   ⌘⇧R'),
-          MenuItem(key: 'graph', label: '전체 보기   ⌘⇧G'),
-          MenuItem(key: 'showAll', label: '모든 스티커 보이기   ⌘⇧S'),
-          MenuItem.separator(),
-          MenuItem(key: 'quit', label: 'Noteez 종료'),
-        ],
-      );
+    items: [
+      MenuItem(key: 'new', label: '새 메모   ⌘⇧N'),
+      MenuItem(key: 'capture', label: '빠른 캡처   ⌘⇧Space'),
+      MenuItem(key: 'search', label: '검색   ⌘⇧K'),
+      MenuItem(key: 'report', label: '내가 한 일   ⌘⇧R'),
+      MenuItem(key: 'graph', label: '전체 보기   ⌘⇧G'),
+      MenuItem(key: 'showAll', label: '모든 스티커 보이기   ⌘⇧S'),
+      MenuItem.separator(),
+      MenuItem(key: 'importMarkdown', label: 'Markdown 파일 가져오기…'),
+      MenuItem(key: 'importMarkdownFolder', label: 'Markdown 폴더 가져오기…'),
+      MenuItem(key: 'importNotionZip', label: 'Notion ZIP 가져오기…'),
+      MenuItem(key: 'exportMarkdown', label: '모든 메모를 Markdown으로 내보내기…'),
+      MenuItem.separator(),
+      MenuItem(key: 'quit', label: 'Noteez 종료'),
+    ],
+  );
 
   @override
   void onTrayIconMouseDown() => trayManager.popUpContextMenu();
@@ -105,9 +111,92 @@ class MenubarController with TrayListener {
         mainController.openOverview();
       case 'showAll':
         mainController.showAll();
+      case 'importMarkdown':
+        unawaited(_importFiles());
+      case 'importMarkdownFolder':
+        unawaited(_importFolder());
+      case 'importNotionZip':
+        unawaited(_importNotionZip());
+      case 'exportMarkdown':
+        unawaited(_exportAll());
       case 'quit':
         _quit();
     }
+  }
+
+  Future<void> _importFiles() async {
+    try {
+      final result = await mainController.importMarkdownFiles();
+      if (result != null) {
+        await _flashStatus(
+          'Markdown ${result.imported}개 가져옴'
+          '${result.updated == 0 ? '' : ' · ${result.updated}개 갱신'}'
+          '${result.skipped == 0 ? '' : ' · ${result.skipped}개 중복 건너뜀'}'
+          '${result.conflicted == 0 ? '' : ' · ${result.conflicted}개 충돌 보존'}'
+          '${result.linked == 0 ? '' : ' · 연결 ${result.linked}개'}'
+          '${result.failed == 0 ? '' : ' · ${result.failed}개 실패'}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Markdown import failed: $e');
+      await _flashStatus('Markdown 가져오기 실패');
+    }
+  }
+
+  Future<void> _importFolder() async {
+    try {
+      final result = await mainController.importMarkdownFolder();
+      if (result != null) {
+        await _flashStatus(
+          'Markdown ${result.imported}개 가져옴'
+          '${result.updated == 0 ? '' : ' · ${result.updated}개 갱신'}'
+          '${result.skipped == 0 ? '' : ' · ${result.skipped}개 중복 건너뜀'}'
+          '${result.conflicted == 0 ? '' : ' · ${result.conflicted}개 충돌 보존'}'
+          '${result.linked == 0 ? '' : ' · 연결 ${result.linked}개'}'
+          '${result.failed == 0 ? '' : ' · ${result.failed}개 실패'}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Markdown folder import failed: $e');
+      await _flashStatus('Markdown 폴더 가져오기 실패');
+    }
+  }
+
+  Future<void> _importNotionZip() async {
+    try {
+      final result = await mainController.importNotionZip();
+      if (result != null) {
+        await _flashStatus(
+          'Notion ${result.imported}개 가져옴'
+          '${result.updated == 0 ? '' : ' · ${result.updated}개 갱신'}'
+          '${result.skipped == 0 ? '' : ' · ${result.skipped}개 중복 건너뜀'}'
+          '${result.conflicted == 0 ? '' : ' · ${result.conflicted}개 충돌 보존'}'
+          '${result.linked == 0 ? '' : ' · 연결 ${result.linked}개'}'
+          '${result.failed == 0 ? '' : ' · ${result.failed}개 실패'}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Notion ZIP import failed: $e');
+      await _flashStatus('Notion ZIP 가져오기 실패');
+    }
+  }
+
+  Future<void> _exportAll() async {
+    try {
+      final result = await mainController.exportAllMarkdown();
+      if (result == null) return;
+      await Process.run('open', [result.directoryPath]);
+      await _flashStatus('Markdown ${result.noteCount}개 내보냄');
+    } catch (e) {
+      debugPrint('Markdown export failed: $e');
+      await _flashStatus('Markdown 내보내기 실패');
+    }
+  }
+
+  Future<void> _flashStatus(String message) async {
+    await trayManager.setToolTip(message);
+    await Future<void>.delayed(const Duration(seconds: 2));
+    await trayManager.setToolTip('Noteez');
   }
 
   Future<void> _quit() async {

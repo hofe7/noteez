@@ -1316,12 +1316,744 @@ class EmbeddingsCompanion extends UpdateCompanion<EmbeddingRow> {
   }
 }
 
+class $SuggestionDismissalsTable extends SuggestionDismissals
+    with TableInfo<$SuggestionDismissalsTable, SuggestionDismissalRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SuggestionDismissalsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _aIdMeta = const VerificationMeta('aId');
+  @override
+  late final GeneratedColumn<String> aId = GeneratedColumn<String>(
+    'a_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bIdMeta = const VerificationMeta('bId');
+  @override
+  late final GeneratedColumn<String> bId = GeneratedColumn<String>(
+    'b_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _aHashMeta = const VerificationMeta('aHash');
+  @override
+  late final GeneratedColumn<String> aHash = GeneratedColumn<String>(
+    'a_hash',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bHashMeta = const VerificationMeta('bHash');
+  @override
+  late final GeneratedColumn<String> bHash = GeneratedColumn<String>(
+    'b_hash',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [aId, bId, aHash, bHash, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'suggestion_dismissals';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SuggestionDismissalRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('a_id')) {
+      context.handle(
+        _aIdMeta,
+        aId.isAcceptableOrUnknown(data['a_id']!, _aIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_aIdMeta);
+    }
+    if (data.containsKey('b_id')) {
+      context.handle(
+        _bIdMeta,
+        bId.isAcceptableOrUnknown(data['b_id']!, _bIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bIdMeta);
+    }
+    if (data.containsKey('a_hash')) {
+      context.handle(
+        _aHashMeta,
+        aHash.isAcceptableOrUnknown(data['a_hash']!, _aHashMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_aHashMeta);
+    }
+    if (data.containsKey('b_hash')) {
+      context.handle(
+        _bHashMeta,
+        bHash.isAcceptableOrUnknown(data['b_hash']!, _bHashMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bHashMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {aId, bId};
+  @override
+  SuggestionDismissalRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SuggestionDismissalRow(
+      aId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}a_id'],
+      )!,
+      bId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}b_id'],
+      )!,
+      aHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}a_hash'],
+      )!,
+      bHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}b_hash'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SuggestionDismissalsTable createAlias(String alias) {
+    return $SuggestionDismissalsTable(attachedDatabase, alias);
+  }
+}
+
+class SuggestionDismissalRow extends DataClass
+    implements Insertable<SuggestionDismissalRow> {
+  final String aId;
+  final String bId;
+  final String aHash;
+  final String bHash;
+  final int createdAt;
+  const SuggestionDismissalRow({
+    required this.aId,
+    required this.bId,
+    required this.aHash,
+    required this.bHash,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['a_id'] = Variable<String>(aId);
+    map['b_id'] = Variable<String>(bId);
+    map['a_hash'] = Variable<String>(aHash);
+    map['b_hash'] = Variable<String>(bHash);
+    map['created_at'] = Variable<int>(createdAt);
+    return map;
+  }
+
+  SuggestionDismissalsCompanion toCompanion(bool nullToAbsent) {
+    return SuggestionDismissalsCompanion(
+      aId: Value(aId),
+      bId: Value(bId),
+      aHash: Value(aHash),
+      bHash: Value(bHash),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory SuggestionDismissalRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SuggestionDismissalRow(
+      aId: serializer.fromJson<String>(json['aId']),
+      bId: serializer.fromJson<String>(json['bId']),
+      aHash: serializer.fromJson<String>(json['aHash']),
+      bHash: serializer.fromJson<String>(json['bHash']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'aId': serializer.toJson<String>(aId),
+      'bId': serializer.toJson<String>(bId),
+      'aHash': serializer.toJson<String>(aHash),
+      'bHash': serializer.toJson<String>(bHash),
+      'createdAt': serializer.toJson<int>(createdAt),
+    };
+  }
+
+  SuggestionDismissalRow copyWith({
+    String? aId,
+    String? bId,
+    String? aHash,
+    String? bHash,
+    int? createdAt,
+  }) => SuggestionDismissalRow(
+    aId: aId ?? this.aId,
+    bId: bId ?? this.bId,
+    aHash: aHash ?? this.aHash,
+    bHash: bHash ?? this.bHash,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  SuggestionDismissalRow copyWithCompanion(SuggestionDismissalsCompanion data) {
+    return SuggestionDismissalRow(
+      aId: data.aId.present ? data.aId.value : this.aId,
+      bId: data.bId.present ? data.bId.value : this.bId,
+      aHash: data.aHash.present ? data.aHash.value : this.aHash,
+      bHash: data.bHash.present ? data.bHash.value : this.bHash,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SuggestionDismissalRow(')
+          ..write('aId: $aId, ')
+          ..write('bId: $bId, ')
+          ..write('aHash: $aHash, ')
+          ..write('bHash: $bHash, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(aId, bId, aHash, bHash, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SuggestionDismissalRow &&
+          other.aId == this.aId &&
+          other.bId == this.bId &&
+          other.aHash == this.aHash &&
+          other.bHash == this.bHash &&
+          other.createdAt == this.createdAt);
+}
+
+class SuggestionDismissalsCompanion
+    extends UpdateCompanion<SuggestionDismissalRow> {
+  final Value<String> aId;
+  final Value<String> bId;
+  final Value<String> aHash;
+  final Value<String> bHash;
+  final Value<int> createdAt;
+  final Value<int> rowid;
+  const SuggestionDismissalsCompanion({
+    this.aId = const Value.absent(),
+    this.bId = const Value.absent(),
+    this.aHash = const Value.absent(),
+    this.bHash = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SuggestionDismissalsCompanion.insert({
+    required String aId,
+    required String bId,
+    required String aHash,
+    required String bHash,
+    required int createdAt,
+    this.rowid = const Value.absent(),
+  }) : aId = Value(aId),
+       bId = Value(bId),
+       aHash = Value(aHash),
+       bHash = Value(bHash),
+       createdAt = Value(createdAt);
+  static Insertable<SuggestionDismissalRow> custom({
+    Expression<String>? aId,
+    Expression<String>? bId,
+    Expression<String>? aHash,
+    Expression<String>? bHash,
+    Expression<int>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (aId != null) 'a_id': aId,
+      if (bId != null) 'b_id': bId,
+      if (aHash != null) 'a_hash': aHash,
+      if (bHash != null) 'b_hash': bHash,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SuggestionDismissalsCompanion copyWith({
+    Value<String>? aId,
+    Value<String>? bId,
+    Value<String>? aHash,
+    Value<String>? bHash,
+    Value<int>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return SuggestionDismissalsCompanion(
+      aId: aId ?? this.aId,
+      bId: bId ?? this.bId,
+      aHash: aHash ?? this.aHash,
+      bHash: bHash ?? this.bHash,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (aId.present) {
+      map['a_id'] = Variable<String>(aId.value);
+    }
+    if (bId.present) {
+      map['b_id'] = Variable<String>(bId.value);
+    }
+    if (aHash.present) {
+      map['a_hash'] = Variable<String>(aHash.value);
+    }
+    if (bHash.present) {
+      map['b_hash'] = Variable<String>(bHash.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SuggestionDismissalsCompanion(')
+          ..write('aId: $aId, ')
+          ..write('bId: $bId, ')
+          ..write('aHash: $aHash, ')
+          ..write('bHash: $bHash, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ImportOriginsTable extends ImportOrigins
+    with TableInfo<$ImportOriginsTable, ImportOriginRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ImportOriginsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _sourceKeyMeta = const VerificationMeta(
+    'sourceKey',
+  );
+  @override
+  late final GeneratedColumn<String> sourceKey = GeneratedColumn<String>(
+    'source_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _stickyIdMeta = const VerificationMeta(
+    'stickyId',
+  );
+  @override
+  late final GeneratedColumn<String> stickyId = GeneratedColumn<String>(
+    'sticky_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceHashMeta = const VerificationMeta(
+    'sourceHash',
+  );
+  @override
+  late final GeneratedColumn<String> sourceHash = GeneratedColumn<String>(
+    'source_hash',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _stickyHashMeta = const VerificationMeta(
+    'stickyHash',
+  );
+  @override
+  late final GeneratedColumn<String> stickyHash = GeneratedColumn<String>(
+    'sticky_hash',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _importedAtMeta = const VerificationMeta(
+    'importedAt',
+  );
+  @override
+  late final GeneratedColumn<int> importedAt = GeneratedColumn<int>(
+    'imported_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    sourceKey,
+    stickyId,
+    sourceHash,
+    stickyHash,
+    importedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'import_origins';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ImportOriginRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('source_key')) {
+      context.handle(
+        _sourceKeyMeta,
+        sourceKey.isAcceptableOrUnknown(data['source_key']!, _sourceKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceKeyMeta);
+    }
+    if (data.containsKey('sticky_id')) {
+      context.handle(
+        _stickyIdMeta,
+        stickyId.isAcceptableOrUnknown(data['sticky_id']!, _stickyIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_stickyIdMeta);
+    }
+    if (data.containsKey('source_hash')) {
+      context.handle(
+        _sourceHashMeta,
+        sourceHash.isAcceptableOrUnknown(data['source_hash']!, _sourceHashMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceHashMeta);
+    }
+    if (data.containsKey('sticky_hash')) {
+      context.handle(
+        _stickyHashMeta,
+        stickyHash.isAcceptableOrUnknown(data['sticky_hash']!, _stickyHashMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_stickyHashMeta);
+    }
+    if (data.containsKey('imported_at')) {
+      context.handle(
+        _importedAtMeta,
+        importedAt.isAcceptableOrUnknown(data['imported_at']!, _importedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_importedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {sourceKey};
+  @override
+  ImportOriginRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ImportOriginRow(
+      sourceKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_key'],
+      )!,
+      stickyId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sticky_id'],
+      )!,
+      sourceHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_hash'],
+      )!,
+      stickyHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sticky_hash'],
+      )!,
+      importedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}imported_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ImportOriginsTable createAlias(String alias) {
+    return $ImportOriginsTable(attachedDatabase, alias);
+  }
+}
+
+class ImportOriginRow extends DataClass implements Insertable<ImportOriginRow> {
+  final String sourceKey;
+  final String stickyId;
+  final String sourceHash;
+  final String stickyHash;
+  final int importedAt;
+  const ImportOriginRow({
+    required this.sourceKey,
+    required this.stickyId,
+    required this.sourceHash,
+    required this.stickyHash,
+    required this.importedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['source_key'] = Variable<String>(sourceKey);
+    map['sticky_id'] = Variable<String>(stickyId);
+    map['source_hash'] = Variable<String>(sourceHash);
+    map['sticky_hash'] = Variable<String>(stickyHash);
+    map['imported_at'] = Variable<int>(importedAt);
+    return map;
+  }
+
+  ImportOriginsCompanion toCompanion(bool nullToAbsent) {
+    return ImportOriginsCompanion(
+      sourceKey: Value(sourceKey),
+      stickyId: Value(stickyId),
+      sourceHash: Value(sourceHash),
+      stickyHash: Value(stickyHash),
+      importedAt: Value(importedAt),
+    );
+  }
+
+  factory ImportOriginRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ImportOriginRow(
+      sourceKey: serializer.fromJson<String>(json['sourceKey']),
+      stickyId: serializer.fromJson<String>(json['stickyId']),
+      sourceHash: serializer.fromJson<String>(json['sourceHash']),
+      stickyHash: serializer.fromJson<String>(json['stickyHash']),
+      importedAt: serializer.fromJson<int>(json['importedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'sourceKey': serializer.toJson<String>(sourceKey),
+      'stickyId': serializer.toJson<String>(stickyId),
+      'sourceHash': serializer.toJson<String>(sourceHash),
+      'stickyHash': serializer.toJson<String>(stickyHash),
+      'importedAt': serializer.toJson<int>(importedAt),
+    };
+  }
+
+  ImportOriginRow copyWith({
+    String? sourceKey,
+    String? stickyId,
+    String? sourceHash,
+    String? stickyHash,
+    int? importedAt,
+  }) => ImportOriginRow(
+    sourceKey: sourceKey ?? this.sourceKey,
+    stickyId: stickyId ?? this.stickyId,
+    sourceHash: sourceHash ?? this.sourceHash,
+    stickyHash: stickyHash ?? this.stickyHash,
+    importedAt: importedAt ?? this.importedAt,
+  );
+  ImportOriginRow copyWithCompanion(ImportOriginsCompanion data) {
+    return ImportOriginRow(
+      sourceKey: data.sourceKey.present ? data.sourceKey.value : this.sourceKey,
+      stickyId: data.stickyId.present ? data.stickyId.value : this.stickyId,
+      sourceHash: data.sourceHash.present
+          ? data.sourceHash.value
+          : this.sourceHash,
+      stickyHash: data.stickyHash.present
+          ? data.stickyHash.value
+          : this.stickyHash,
+      importedAt: data.importedAt.present
+          ? data.importedAt.value
+          : this.importedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ImportOriginRow(')
+          ..write('sourceKey: $sourceKey, ')
+          ..write('stickyId: $stickyId, ')
+          ..write('sourceHash: $sourceHash, ')
+          ..write('stickyHash: $stickyHash, ')
+          ..write('importedAt: $importedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(sourceKey, stickyId, sourceHash, stickyHash, importedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ImportOriginRow &&
+          other.sourceKey == this.sourceKey &&
+          other.stickyId == this.stickyId &&
+          other.sourceHash == this.sourceHash &&
+          other.stickyHash == this.stickyHash &&
+          other.importedAt == this.importedAt);
+}
+
+class ImportOriginsCompanion extends UpdateCompanion<ImportOriginRow> {
+  final Value<String> sourceKey;
+  final Value<String> stickyId;
+  final Value<String> sourceHash;
+  final Value<String> stickyHash;
+  final Value<int> importedAt;
+  final Value<int> rowid;
+  const ImportOriginsCompanion({
+    this.sourceKey = const Value.absent(),
+    this.stickyId = const Value.absent(),
+    this.sourceHash = const Value.absent(),
+    this.stickyHash = const Value.absent(),
+    this.importedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ImportOriginsCompanion.insert({
+    required String sourceKey,
+    required String stickyId,
+    required String sourceHash,
+    required String stickyHash,
+    required int importedAt,
+    this.rowid = const Value.absent(),
+  }) : sourceKey = Value(sourceKey),
+       stickyId = Value(stickyId),
+       sourceHash = Value(sourceHash),
+       stickyHash = Value(stickyHash),
+       importedAt = Value(importedAt);
+  static Insertable<ImportOriginRow> custom({
+    Expression<String>? sourceKey,
+    Expression<String>? stickyId,
+    Expression<String>? sourceHash,
+    Expression<String>? stickyHash,
+    Expression<int>? importedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (sourceKey != null) 'source_key': sourceKey,
+      if (stickyId != null) 'sticky_id': stickyId,
+      if (sourceHash != null) 'source_hash': sourceHash,
+      if (stickyHash != null) 'sticky_hash': stickyHash,
+      if (importedAt != null) 'imported_at': importedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ImportOriginsCompanion copyWith({
+    Value<String>? sourceKey,
+    Value<String>? stickyId,
+    Value<String>? sourceHash,
+    Value<String>? stickyHash,
+    Value<int>? importedAt,
+    Value<int>? rowid,
+  }) {
+    return ImportOriginsCompanion(
+      sourceKey: sourceKey ?? this.sourceKey,
+      stickyId: stickyId ?? this.stickyId,
+      sourceHash: sourceHash ?? this.sourceHash,
+      stickyHash: stickyHash ?? this.stickyHash,
+      importedAt: importedAt ?? this.importedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (sourceKey.present) {
+      map['source_key'] = Variable<String>(sourceKey.value);
+    }
+    if (stickyId.present) {
+      map['sticky_id'] = Variable<String>(stickyId.value);
+    }
+    if (sourceHash.present) {
+      map['source_hash'] = Variable<String>(sourceHash.value);
+    }
+    if (stickyHash.present) {
+      map['sticky_hash'] = Variable<String>(stickyHash.value);
+    }
+    if (importedAt.present) {
+      map['imported_at'] = Variable<int>(importedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ImportOriginsCompanion(')
+          ..write('sourceKey: $sourceKey, ')
+          ..write('stickyId: $stickyId, ')
+          ..write('sourceHash: $sourceHash, ')
+          ..write('stickyHash: $stickyHash, ')
+          ..write('importedAt: $importedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $StickiesTable stickies = $StickiesTable(this);
   late final $LinksTable links = $LinksTable(this);
   late final $EmbeddingsTable embeddings = $EmbeddingsTable(this);
+  late final $SuggestionDismissalsTable suggestionDismissals =
+      $SuggestionDismissalsTable(this);
+  late final $ImportOriginsTable importOrigins = $ImportOriginsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1330,6 +2062,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     stickies,
     links,
     embeddings,
+    suggestionDismissals,
+    importOrigins,
   ];
 }
 
@@ -2019,6 +2753,428 @@ typedef $$EmbeddingsTableProcessedTableManager =
       EmbeddingRow,
       PrefetchHooks Function()
     >;
+typedef $$SuggestionDismissalsTableCreateCompanionBuilder =
+    SuggestionDismissalsCompanion Function({
+      required String aId,
+      required String bId,
+      required String aHash,
+      required String bHash,
+      required int createdAt,
+      Value<int> rowid,
+    });
+typedef $$SuggestionDismissalsTableUpdateCompanionBuilder =
+    SuggestionDismissalsCompanion Function({
+      Value<String> aId,
+      Value<String> bId,
+      Value<String> aHash,
+      Value<String> bHash,
+      Value<int> createdAt,
+      Value<int> rowid,
+    });
+
+class $$SuggestionDismissalsTableFilterComposer
+    extends Composer<_$AppDatabase, $SuggestionDismissalsTable> {
+  $$SuggestionDismissalsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get aId => $composableBuilder(
+    column: $table.aId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bId => $composableBuilder(
+    column: $table.bId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get aHash => $composableBuilder(
+    column: $table.aHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bHash => $composableBuilder(
+    column: $table.bHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SuggestionDismissalsTableOrderingComposer
+    extends Composer<_$AppDatabase, $SuggestionDismissalsTable> {
+  $$SuggestionDismissalsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get aId => $composableBuilder(
+    column: $table.aId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get bId => $composableBuilder(
+    column: $table.bId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get aHash => $composableBuilder(
+    column: $table.aHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get bHash => $composableBuilder(
+    column: $table.bHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SuggestionDismissalsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SuggestionDismissalsTable> {
+  $$SuggestionDismissalsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get aId =>
+      $composableBuilder(column: $table.aId, builder: (column) => column);
+
+  GeneratedColumn<String> get bId =>
+      $composableBuilder(column: $table.bId, builder: (column) => column);
+
+  GeneratedColumn<String> get aHash =>
+      $composableBuilder(column: $table.aHash, builder: (column) => column);
+
+  GeneratedColumn<String> get bHash =>
+      $composableBuilder(column: $table.bHash, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$SuggestionDismissalsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SuggestionDismissalsTable,
+          SuggestionDismissalRow,
+          $$SuggestionDismissalsTableFilterComposer,
+          $$SuggestionDismissalsTableOrderingComposer,
+          $$SuggestionDismissalsTableAnnotationComposer,
+          $$SuggestionDismissalsTableCreateCompanionBuilder,
+          $$SuggestionDismissalsTableUpdateCompanionBuilder,
+          (
+            SuggestionDismissalRow,
+            BaseReferences<
+              _$AppDatabase,
+              $SuggestionDismissalsTable,
+              SuggestionDismissalRow
+            >,
+          ),
+          SuggestionDismissalRow,
+          PrefetchHooks Function()
+        > {
+  $$SuggestionDismissalsTableTableManager(
+    _$AppDatabase db,
+    $SuggestionDismissalsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SuggestionDismissalsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SuggestionDismissalsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$SuggestionDismissalsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> aId = const Value.absent(),
+                Value<String> bId = const Value.absent(),
+                Value<String> aHash = const Value.absent(),
+                Value<String> bHash = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SuggestionDismissalsCompanion(
+                aId: aId,
+                bId: bId,
+                aHash: aHash,
+                bHash: bHash,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String aId,
+                required String bId,
+                required String aHash,
+                required String bHash,
+                required int createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => SuggestionDismissalsCompanion.insert(
+                aId: aId,
+                bId: bId,
+                aHash: aHash,
+                bHash: bHash,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SuggestionDismissalsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SuggestionDismissalsTable,
+      SuggestionDismissalRow,
+      $$SuggestionDismissalsTableFilterComposer,
+      $$SuggestionDismissalsTableOrderingComposer,
+      $$SuggestionDismissalsTableAnnotationComposer,
+      $$SuggestionDismissalsTableCreateCompanionBuilder,
+      $$SuggestionDismissalsTableUpdateCompanionBuilder,
+      (
+        SuggestionDismissalRow,
+        BaseReferences<
+          _$AppDatabase,
+          $SuggestionDismissalsTable,
+          SuggestionDismissalRow
+        >,
+      ),
+      SuggestionDismissalRow,
+      PrefetchHooks Function()
+    >;
+typedef $$ImportOriginsTableCreateCompanionBuilder =
+    ImportOriginsCompanion Function({
+      required String sourceKey,
+      required String stickyId,
+      required String sourceHash,
+      required String stickyHash,
+      required int importedAt,
+      Value<int> rowid,
+    });
+typedef $$ImportOriginsTableUpdateCompanionBuilder =
+    ImportOriginsCompanion Function({
+      Value<String> sourceKey,
+      Value<String> stickyId,
+      Value<String> sourceHash,
+      Value<String> stickyHash,
+      Value<int> importedAt,
+      Value<int> rowid,
+    });
+
+class $$ImportOriginsTableFilterComposer
+    extends Composer<_$AppDatabase, $ImportOriginsTable> {
+  $$ImportOriginsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get sourceKey => $composableBuilder(
+    column: $table.sourceKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get stickyId => $composableBuilder(
+    column: $table.stickyId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceHash => $composableBuilder(
+    column: $table.sourceHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get stickyHash => $composableBuilder(
+    column: $table.stickyHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get importedAt => $composableBuilder(
+    column: $table.importedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ImportOriginsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ImportOriginsTable> {
+  $$ImportOriginsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get sourceKey => $composableBuilder(
+    column: $table.sourceKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get stickyId => $composableBuilder(
+    column: $table.stickyId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceHash => $composableBuilder(
+    column: $table.sourceHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get stickyHash => $composableBuilder(
+    column: $table.stickyHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get importedAt => $composableBuilder(
+    column: $table.importedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ImportOriginsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ImportOriginsTable> {
+  $$ImportOriginsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get sourceKey =>
+      $composableBuilder(column: $table.sourceKey, builder: (column) => column);
+
+  GeneratedColumn<String> get stickyId =>
+      $composableBuilder(column: $table.stickyId, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceHash => $composableBuilder(
+    column: $table.sourceHash,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get stickyHash => $composableBuilder(
+    column: $table.stickyHash,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get importedAt => $composableBuilder(
+    column: $table.importedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$ImportOriginsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ImportOriginsTable,
+          ImportOriginRow,
+          $$ImportOriginsTableFilterComposer,
+          $$ImportOriginsTableOrderingComposer,
+          $$ImportOriginsTableAnnotationComposer,
+          $$ImportOriginsTableCreateCompanionBuilder,
+          $$ImportOriginsTableUpdateCompanionBuilder,
+          (
+            ImportOriginRow,
+            BaseReferences<_$AppDatabase, $ImportOriginsTable, ImportOriginRow>,
+          ),
+          ImportOriginRow,
+          PrefetchHooks Function()
+        > {
+  $$ImportOriginsTableTableManager(_$AppDatabase db, $ImportOriginsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ImportOriginsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ImportOriginsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ImportOriginsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> sourceKey = const Value.absent(),
+                Value<String> stickyId = const Value.absent(),
+                Value<String> sourceHash = const Value.absent(),
+                Value<String> stickyHash = const Value.absent(),
+                Value<int> importedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ImportOriginsCompanion(
+                sourceKey: sourceKey,
+                stickyId: stickyId,
+                sourceHash: sourceHash,
+                stickyHash: stickyHash,
+                importedAt: importedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String sourceKey,
+                required String stickyId,
+                required String sourceHash,
+                required String stickyHash,
+                required int importedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ImportOriginsCompanion.insert(
+                sourceKey: sourceKey,
+                stickyId: stickyId,
+                sourceHash: sourceHash,
+                stickyHash: stickyHash,
+                importedAt: importedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ImportOriginsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ImportOriginsTable,
+      ImportOriginRow,
+      $$ImportOriginsTableFilterComposer,
+      $$ImportOriginsTableOrderingComposer,
+      $$ImportOriginsTableAnnotationComposer,
+      $$ImportOriginsTableCreateCompanionBuilder,
+      $$ImportOriginsTableUpdateCompanionBuilder,
+      (
+        ImportOriginRow,
+        BaseReferences<_$AppDatabase, $ImportOriginsTable, ImportOriginRow>,
+      ),
+      ImportOriginRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2029,4 +3185,8 @@ class $AppDatabaseManager {
       $$LinksTableTableManager(_db, _db.links);
   $$EmbeddingsTableTableManager get embeddings =>
       $$EmbeddingsTableTableManager(_db, _db.embeddings);
+  $$SuggestionDismissalsTableTableManager get suggestionDismissals =>
+      $$SuggestionDismissalsTableTableManager(_db, _db.suggestionDismissals);
+  $$ImportOriginsTableTableManager get importOrigins =>
+      $$ImportOriginsTableTableManager(_db, _db.importOrigins);
 }
