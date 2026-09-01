@@ -55,24 +55,56 @@ class Embeddings extends Table {
   Set<Column> get primaryKey => {stickyId};
 }
 
-@DriftDatabase(tables: [Stickies, Links, Embeddings])
+/// 사용자가 숨긴 의미 추천 pair. 양쪽 메모의 콘텐츠 hash도 함께 저장해 내용이
+/// 바뀌면 과거 거절을 자동으로 무효화하고 다시 평가할 수 있다.
+@DataClassName('SuggestionDismissalRow')
+class SuggestionDismissals extends Table {
+  TextColumn get aId => text()();
+  TextColumn get bId => text()();
+  TextColumn get aHash => text()();
+  TextColumn get bHash => text()();
+  IntColumn get createdAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {aId, bId};
+}
+
+/// 외부 Markdown 원본과 Noteez 메모의 대응. 같은 파일을 다시 가져올 때 중복을
+/// 만들지 않고, Noteez 쪽이 수정되지 않은 경우에만 안전하게 원본 갱신을 반영한다.
+@DataClassName('ImportOriginRow')
+class ImportOrigins extends Table {
+  TextColumn get sourceKey => text()();
+  TextColumn get stickyId => text()();
+  TextColumn get sourceHash => text()();
+  TextColumn get stickyHash => text()();
+  IntColumn get importedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {sourceKey};
+}
+
+@DriftDatabase(
+  tables: [Stickies, Links, Embeddings, SuggestionDismissals, ImportOrigins],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'noteez'));
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onUpgrade: (m, from, to) async {
-          if (from < 2) await m.addColumn(stickies, stickies.pinned);
-          if (from < 3) await m.createTable(links);
-          if (from < 4) await m.createTable(embeddings);
-          if (from < 5) await m.addColumn(stickies, stickies.open);
-          if (from < 6) await m.addColumn(stickies, stickies.remindAt);
-        },
-      );
+    onUpgrade: (m, from, to) async {
+      if (from < 2) await m.addColumn(stickies, stickies.pinned);
+      if (from < 3) await m.createTable(links);
+      if (from < 4) await m.createTable(embeddings);
+      if (from < 5) await m.addColumn(stickies, stickies.open);
+      if (from < 6) await m.addColumn(stickies, stickies.remindAt);
+      if (from < 7) await m.createTable(suggestionDismissals);
+      if (from < 8) await m.createTable(importOrigins);
+    },
+  );
 
   Future<List<EmbeddingRow>> allEmbeddings() => select(embeddings).get();
 
@@ -87,15 +119,78 @@ class AppDatabase extends _$AppDatabase {
   Future<List<LinkRow>> allActiveLinks() =>
       (select(links)..where((t) => t.deletedAt.isNull())).get();
 
-  Future<void> insertLink(String id, String a, String b, int createdAt) =>
-      into(links).insert(
-        LinksCompanion.insert(id: id, aId: a, bId: b, createdAt: createdAt),
-      );
+  Future<void> insertLink(String id, String a, String b, int createdAt) => into(
+    links,
+  ).insert(LinksCompanion.insert(id: id, aId: a, bId: b, createdAt: createdAt));
+
+  Future<void> softDeleteLinkBetween(String a, String b) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return (update(links)..where(
+          (t) =>
+              t.deletedAt.isNull() &
+              ((t.aId.equals(a) & t.bId.equals(b)) |
+                  (t.aId.equals(b) & t.bId.equals(a))),
+        ))
+        .write(LinksCompanion(deletedAt: Value(now)));
+  }
+
+  Future<void> softDeleteLinksFor(String id) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return (update(links)..where(
+          (t) => t.deletedAt.isNull() & (t.aId.equals(id) | t.bId.equals(id)),
+        ))
+        .write(LinksCompanion(deletedAt: Value(now)));
+  }
+
+  Future<List<SuggestionDismissalRow>> allSuggestionDismissals() =>
+      select(suggestionDismissals).get();
+
+  Future<void> upsertSuggestionDismissal({
+    required String aId,
+    required String bId,
+    required String aHash,
+    required String bHash,
+  }) => into(suggestionDismissals).insertOnConflictUpdate(
+    SuggestionDismissalsCompanion.insert(
+      aId: aId,
+      bId: bId,
+      aHash: aHash,
+      bHash: bHash,
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+    ),
+  );
+
+  Future<void> deleteSuggestionDismissalsFor(String id) => (delete(
+    suggestionDismissals,
+  )..where((t) => t.aId.equals(id) | t.bId.equals(id))).go();
+
+  Future<ImportOriginRow?> importOrigin(String sourceKey) => (select(
+    importOrigins,
+  )..where((t) => t.sourceKey.equals(sourceKey))).getSingleOrNull();
+
+  Future<void> upsertImportOrigin({
+    required String sourceKey,
+    required String stickyId,
+    required String sourceHash,
+    required String stickyHash,
+  }) => into(importOrigins).insertOnConflictUpdate(
+    ImportOriginsCompanion.insert(
+      sourceKey: sourceKey,
+      stickyId: stickyId,
+      sourceHash: sourceHash,
+      stickyHash: stickyHash,
+      importedAt: DateTime.now().millisecondsSinceEpoch,
+    ),
+  );
+
+  Future<void> deleteImportOriginsFor(String stickyId) =>
+      (delete(importOrigins)..where((t) => t.stickyId.equals(stickyId))).go();
 
   /// 삭제 안 된 스티커 전부.
   Future<List<Sticky>> allActive() async {
-    final rows =
-        await (select(stickies)..where((t) => t.deletedAt.isNull())).get();
+    final rows = await (select(
+      stickies,
+    )..where((t) => t.deletedAt.isNull())).get();
     return rows.map(_toModel).toList();
   }
 
@@ -113,6 +208,9 @@ class AppDatabase extends _$AppDatabase {
         blocksJson: jsonEncode(s.blocks.map((b) => b.toJson()).toList()),
         createdAt: s.createdAt.millisecondsSinceEpoch,
         updatedAt: s.updatedAt.millisecondsSinceEpoch,
+        // Noteez Markdown round-trip으로 과거 ID를 복원할 수 있다. 기존 행이
+        // tombstone이면 upsert와 함께 활성 상태로 되돌린다.
+        deletedAt: const Value(null),
       ),
     );
   }
@@ -126,18 +224,18 @@ class AppDatabase extends _$AppDatabase {
   }
 
   static Sticky _toModel(StickyRow r) => Sticky(
-        id: r.id,
-        colorIndex: r.colorIndex,
-        x: r.x,
-        y: r.y,
-        collapsed: r.collapsed,
-        pinned: r.pinned,
-        open: r.open,
-        remindAt: r.remindAt,
-        createdAt: DateTime.fromMillisecondsSinceEpoch(r.createdAt),
-        updatedAt: DateTime.fromMillisecondsSinceEpoch(r.updatedAt),
-        blocks: (jsonDecode(r.blocksJson) as List)
-            .map((e) => Block.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+    id: r.id,
+    colorIndex: r.colorIndex,
+    x: r.x,
+    y: r.y,
+    collapsed: r.collapsed,
+    pinned: r.pinned,
+    open: r.open,
+    remindAt: r.remindAt,
+    createdAt: DateTime.fromMillisecondsSinceEpoch(r.createdAt),
+    updatedAt: DateTime.fromMillisecondsSinceEpoch(r.updatedAt),
+    blocks: (jsonDecode(r.blocksJson) as List)
+        .map((e) => Block.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
 }

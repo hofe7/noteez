@@ -5,6 +5,7 @@ import 'dart:math';
 import 'embed/onnx_embedder.dart';
 import 'embed/unigram_tokenizer.dart';
 import 'models/sticky.dart';
+import 'suggested_clusters.dart';
 
 class Connection {
   final String id;
@@ -13,8 +14,12 @@ class Connection {
   final double score;
   const Connection(this.id, this.preview, this.full, this.score);
 
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'preview': preview, 'full': full, 'score': score};
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'preview': preview,
+    'full': full,
+    'score': score,
+  };
 }
 
 /// 온디바이스 임베딩 기반 "관련 메모" 엔진. 메인 프로세스가 소유.
@@ -45,7 +50,39 @@ class ConnectionEngine {
   }
 
   String _text(Sticky s) => s.blocks.map((b) => b.text).join(' ').trim();
-  String _hashOf(String text) => text.hashCode.toString();
+  String _hashOf(String text) {
+    // Dart hashCode는 실행 간 안정성이 보장되지 않는다. DB 캐시와 추천 거절의
+    // 콘텐츠 버전 키로 쓸 수 있도록 결정적인 FNV-1a 32bit를 사용한다.
+    final bytes = utf8.encode(text);
+    var hash = 0x811c9dc5;
+    for (final byte in bytes) {
+      hash ^= byte;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return '${bytes.length}:${hash.toRadixString(16).padLeft(8, '0')}';
+  }
+
+  String contentHash(Sticky sticky) => _hashOf(_text(sticky));
+
+  /// 사용자가 편집 가능한 문서 의미(텍스트/할 일 상태/이미지 이름)의 버전.
+  /// 블록 UUID와 앱 내부 이미지 저장 경로는 제외해 Markdown 재파싱 결과와도 비교된다.
+  String documentHash(Sticky sticky) => _hashOf(
+    jsonEncode([
+      for (final block in sticky.blocks)
+        switch (block) {
+          TextBlock text => {'type': 'text', 'text': text.text},
+          TodoBlock todo => {
+            'type': 'todo',
+            'text': todo.text,
+            'checked': todo.checked,
+          },
+          ImageBlock image => {
+            'type': 'image',
+            'name': image.path.replaceAll('\\', '/').split('/').last,
+          },
+        },
+    ]),
+  );
 
   Future<bool> _ensureModel() async {
     if (_embedder != null) return true;
@@ -77,7 +114,10 @@ class ConnectionEngine {
     }
     final home = Platform.environment['HOME'];
     if (home != null && File('$home/Documents/e5_int8.onnx').existsSync()) {
-      return ('$home/Documents/e5_int8.onnx', '$home/Documents/e5_tokenizer.json');
+      return (
+        '$home/Documents/e5_int8.onnx',
+        '$home/Documents/e5_tokenizer.json',
+      );
     }
     return null;
   }
@@ -130,8 +170,12 @@ class ConnectionEngine {
 
   /// id 메모의 최고 관련 메모 1개 (게이팅 통과 시). 저장된 벡터만 사용(모델 불필요).
   /// exclude: 이미 승인-연결된 메모(중복 제안 방지).
-  Connection? connectionFor(String id, List<Sticky> all,
-      {Set<String> exclude = const {}}) {
+  Connection? connectionFor(
+    String id,
+    List<Sticky> all, {
+    Set<String> exclude = const {},
+    bool Function(String a, String b)? isDismissed,
+  }) {
     final v = _vectors[id];
     if (v == null) return null;
 
@@ -139,7 +183,11 @@ class ConnectionEngine {
     var best = -2.0;
     var second = -2.0;
     for (final e in _vectors.entries) {
-      if (e.key == id || exclude.contains(e.key)) continue;
+      if (e.key == id ||
+          exclude.contains(e.key) ||
+          (isDismissed?.call(id, e.key) ?? false)) {
+        continue;
+      }
       final c = _cos(v, e.value);
       if (c > best) {
         second = best;
@@ -151,7 +199,8 @@ class ConnectionEngine {
     }
     if (bestId == null) return null;
 
-    final pass = best >= _floor && (best - second >= _margin || best >= _strong);
+    final pass =
+        best >= _floor && (best - second >= _margin || best >= _strong);
     if (!pass) return null;
 
     for (final s in all) {
@@ -164,6 +213,30 @@ class ConnectionEngine {
       }
     }
     return null;
+  }
+
+  /// 확정 연결에 속하지 않은 메모를 작은 의미 묶음으로 제안한다.
+  /// 너무 짧은 메모는 일반 표현끼리 과하게 묶이는 것을 막기 위해 제외한다.
+  List<SuggestedCluster> suggestedClusters(
+    List<Sticky> all, {
+    Set<String> exclude = const {},
+    bool Function(String a, String b)? isDismissed,
+  }) {
+    final ids = <String>[
+      for (final s in all)
+        if (!exclude.contains(s.id) &&
+            _vectors.containsKey(s.id) &&
+            _text(s).length >= 6)
+          s.id,
+    ];
+    return SuggestedClusterEngine.build(
+      ids,
+      (a, b) => (isDismissed?.call(a, b) ?? false)
+          ? -2.0
+          : _cos(_vectors[a]!, _vectors[b]!),
+      pairThreshold: _floor,
+      minimumCrossScore: _floor - 0.04,
+    );
   }
 
   static double _cos(List<double> a, List<double> b) {

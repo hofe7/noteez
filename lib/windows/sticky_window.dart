@@ -14,8 +14,11 @@ import '../sticky_palette.dart';
 class StickyWindowApp extends StatelessWidget {
   final Sticky initial;
   final bool focusOnOpen;
-  const StickyWindowApp(
-      {super.key, required this.initial, this.focusOnOpen = false});
+  const StickyWindowApp({
+    super.key,
+    required this.initial,
+    this.focusOnOpen = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -31,8 +34,11 @@ class StickyWindowApp extends StatelessWidget {
 class StickyWindow extends StatefulWidget {
   final Sticky initial;
   final bool focusOnOpen; // 검색/소환으로 열렸으면 바로 편집 포커스
-  const StickyWindow(
-      {super.key, required this.initial, this.focusOnOpen = false});
+  const StickyWindow({
+    super.key,
+    required this.initial,
+    this.focusOnOpen = false,
+  });
 
   @override
   State<StickyWindow> createState() => _StickyWindowState();
@@ -127,11 +133,23 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
         _suggestion = r.suggestion;
         _sugExpanded = false;
       });
-    } catch (_) {/* 연결 기능 비활성/오류 → 표시 안 함 */}
+    } catch (_) {
+      /* 연결 기능 비활성/오류 → 표시 안 함 */
+    }
   }
 
   Future<void> _acceptLink(String otherId) async {
     await _main.linkStickies(_s.id, otherId);
+    await _fetchConnection();
+  }
+
+  Future<void> _removeLink(String otherId) async {
+    await _main.unlinkStickies(_s.id, otherId);
+    await _fetchConnection();
+  }
+
+  Future<void> _dismissSuggestion(String otherId) async {
+    await _main.dismissSuggestions([_s.id, otherId]);
     await _fetchConnection();
   }
 
@@ -252,6 +270,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   @override
   Widget build(BuildContext context) {
     _scheduleResize();
+    final footerChildren = _footerChildren();
     return CallbackShortcuts(
       bindings: {
         // ⌘. : 접기/펴기 토글 (편집 중에도 동작 — 블록 필드가 안 쓰는 키라 위로 전파)
@@ -259,87 +278,106 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
             _toggleCollapse,
       },
       child: MouseRegion(
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-        decoration: BoxDecoration(
-          color: StickyPalette.of(_s.colorIndex),
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: const [
-            BoxShadow(
-                color: Color(0x33000000), blurRadius: 14, offset: Offset(0, 6)),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _header(),
-            if (!_s.collapsed)
-              // 항상 바닥-고정 레이아웃: 내용은 위(스크롤), 푸터는 창 바닥.
-              // 드래그 리사이즈 중에도 실시간으로 푸터가 따라옴.
-              Expanded(
-                child: Column(
-                  children: [
-                    // 본문 빈 영역(글자 아래)을 눌러도 마지막 줄에 커서가 가도록.
-                    // TextField는 자기 탭을 먼저 가져가므로 빈 곳 탭만 여기로 옴.
-                    Expanded(
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.text, // 빈 곳도 I-beam
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          // 본문 빈 영역 탭 → 에디터 끝에 커서. (에디터 위 탭은 Quill이 가져감)
-                          onTap: () => _editorKey.currentState?.focusEnd(),
-                          child: SingleChildScrollView(
-                            child: Padding(
-                              key: _bodyKey,
-                              padding: const EdgeInsets.fromLTRB(12, 6, 10, 4),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  if (_showColors) _colorRow(),
-                                  if (_showReminder) _reminderPicker(),
-                                  NoteEditor(
-                                    key: _editorKey,
-                                    initial: _s.blocks,
-                                    autofocus: widget.focusOnOpen ||
-                                        _isFreshEmpty(_s),
-                                    accent: StickyPalette.ink(_s.colorIndex),
-                                    onChanged: _onEditorChanged,
-                                  ),
-                                ],
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            decoration: BoxDecoration(
+              color: StickyPalette.of(_s.colorIndex),
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 14,
+                  offset: Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _header(),
+                if (!_s.collapsed)
+                  // 본문이 짧으면 푸터는 바닥에, 창이 너무 작거나 본문이 길면 전체가
+                  // 자연스럽게 스크롤된다. 중첩 Column/Expanded의 순간 overflow를 피한다.
+                  Expanded(
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.text,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _editorKey.currentState?.focusEnd(),
+                        child: CustomScrollView(
+                          slivers: [
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                key: _bodyKey,
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  6,
+                                  10,
+                                  4,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    if (_showColors) _colorRow(),
+                                    if (_showReminder) _reminderPicker(),
+                                    NoteEditor(
+                                      key: _editorKey,
+                                      initial: _s.blocks,
+                                      autofocus:
+                                          widget.focusOnOpen ||
+                                          _isFreshEmpty(_s),
+                                      accent: StickyPalette.ink(_s.colorIndex),
+                                      onChanged: _onEditorChanged,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
+                            SliverFillRemaining(
+                              hasScrollBody: false,
+                              child: footerChildren.isEmpty
+                                  ? const SizedBox.shrink()
+                                  : Align(
+                                      alignment: Alignment.bottomCenter,
+                                      child: Padding(
+                                        key: _footerKey,
+                                        padding: const EdgeInsets.fromLTRB(
+                                          12,
+                                          2,
+                                          10,
+                                          12,
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: footerChildren,
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    if (_footerChildren().isNotEmpty)
-                      Padding(
-                        key: _footerKey,
-                        padding: const EdgeInsets.fromLTRB(12, 2, 10, 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: _footerChildren(),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-          ],
+                  ),
+              ],
+            ),
+          ),
         ),
-      ),
-      ),
       ),
     );
   }
 
   List<Widget> _footerChildren() => [
-        if (_s.remindAt != null) _reminderStatus(),
-        if (_links.isNotEmpty) _linksWidget(),
-        if (_suggestion != null) _suggestionRow(_suggestion!),
-      ];
+    if (_s.remindAt != null) _reminderStatus(),
+    if (_links.isNotEmpty) _linksWidget(),
+    if (_suggestion != null) _suggestionRow(_suggestion!),
+  ];
 
   // 리마인더 프리셋 (라벨, 시각). 발화 시 이 스티커가 desk 로 소환된다.
   List<(String, DateTime)> _remindPresets() {
@@ -409,16 +447,19 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
               behavior: HitTestBehavior.opaque,
               onTap: () => _setReminder(dt),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0x0A000000),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: const Color(0x0F000000)),
                 ),
-                child: Text(label,
-                    style:
-                        const TextStyle(fontSize: 12, color: Colors.black54)),
+                child: Text(
+                  label,
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
               ),
             ),
         ],
@@ -435,8 +476,10 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
           Icon(Icons.alarm, size: 13, color: StickyPalette.ink(_s.colorIndex)),
           const SizedBox(width: 6),
           Expanded(
-            child: Text(_fmtRemind(_s.remindAt!),
-                style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            child: Text(
+              _fmtRemind(_s.remindAt!),
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
+            ),
           ),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -472,14 +515,17 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.black87),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.black87,
+                        ),
                       )
                     : Text(
                         relativeDate(_s.createdAt, DateTime.now()),
                         style: const TextStyle(
-                            fontSize: 11, color: Colors.black38),
+                          fontSize: 11,
+                          color: Colors.black38,
+                        ),
                       ),
               ),
               if (_s.pinned && !_hovering)
@@ -494,17 +540,23 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                 ),
               if (_hovering) ...[
                 _iconBtn(
-                    _s.remindAt != null ? Icons.alarm_on : Icons.alarm_add,
-                    () => setState(() => _showReminder = !_showReminder),
-                    '리마인더'),
-                _iconBtn(Icons.palette_outlined,
-                    () => setState(() => _showColors = !_showColors)),
+                  _s.remindAt != null ? Icons.alarm_on : Icons.alarm_add,
+                  () => setState(() => _showReminder = !_showReminder),
+                  '리마인더',
+                ),
                 _iconBtn(
-                    _s.collapsed ? Icons.unfold_more : Icons.unfold_less,
-                    _toggleCollapse,
-                    _s.collapsed ? '펴기  ⌘.' : '접기  ⌘.'),
-                _iconBtn(_s.pinned ? Icons.push_pin : Icons.push_pin_outlined,
-                    _togglePin),
+                  Icons.palette_outlined,
+                  () => setState(() => _showColors = !_showColors),
+                ),
+                _iconBtn(
+                  _s.collapsed ? Icons.unfold_more : Icons.unfold_less,
+                  _toggleCollapse,
+                  _s.collapsed ? '펴기  ⌘.' : '접기  ⌘.',
+                ),
+                _iconBtn(
+                  _s.pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                  _togglePin,
+                ),
                 _iconBtn(Icons.delete_outline, _delete),
                 _iconBtn(Icons.close, _close), // × = 닫기(보관)
                 const SizedBox(width: 4),
@@ -530,11 +582,15 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
               children: [
                 const Icon(Icons.link, size: 13, color: Colors.black54),
                 const SizedBox(width: 5),
-                Text('연결 ${_links.length}',
-                    style:
-                        const TextStyle(fontSize: 12, color: Colors.black54)),
-                Icon(_linksExpanded ? Icons.expand_less : Icons.expand_more,
-                    size: 15, color: Colors.black26),
+                Text(
+                  '연결 ${_links.length}',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+                Icon(
+                  _linksExpanded ? Icons.expand_less : Icons.expand_more,
+                  size: 15,
+                  color: Colors.black26,
+                ),
               ],
             ),
           ),
@@ -547,17 +603,35 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
 
   // 펼친 연결 한 줄. 클릭하면 그 메모 창이 앞으로.
   Widget _linkRow(Map<String, dynamic> lk) {
+    final id = lk['id'] as String;
     return Padding(
       padding: const EdgeInsets.only(top: 4, left: 18),
-      child: InkWell(
-        onTap: () => _main.focusSticky(lk['id'] as String),
-        borderRadius: BorderRadius.circular(4),
-        child: Text(
-          lk['preview'] as String,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 12, color: Colors.black54),
-        ),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: () => _main.focusSticky(id),
+              borderRadius: BorderRadius.circular(4),
+              child: Text(
+                lk['preview'] as String,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ),
+          ),
+          Tooltip(
+            message: '연결 해제',
+            child: InkWell(
+              onTap: () => _removeLink(id),
+              customBorder: const CircleBorder(),
+              child: const Padding(
+                padding: EdgeInsets.all(3),
+                child: Icon(Icons.link_off, size: 13, color: Colors.black26),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -584,8 +658,10 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                           '관련: ${s['preview']}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style:
-                              const TextStyle(fontSize: 12, color: Colors.black38),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.black38,
+                          ),
                         ),
                       ),
                       Icon(
@@ -598,6 +674,17 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                 ),
               ),
               const SizedBox(width: 6),
+              Tooltip(
+                message: '이 추천 숨기기',
+                child: InkWell(
+                  onTap: () => _dismissSuggestion(s['id'] as String),
+                  customBorder: const CircleBorder(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.close, size: 13, color: Colors.black26),
+                  ),
+                ),
+              ),
               _linkPill(() => _acceptLink(s['id'] as String)),
             ],
           ),
@@ -616,7 +703,10 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                   ? s['full'] as String
                   : s['preview'] as String,
               style: const TextStyle(
-                  fontSize: 13, color: Colors.black54, height: 1.35),
+                fontSize: 13,
+                color: Colors.black54,
+                height: 1.35,
+              ),
             ),
           ),
       ],
@@ -636,8 +726,11 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
             color: Colors.black.withValues(alpha: 0.06),
             shape: BoxShape.circle,
           ),
-          child: Icon(Icons.add_link,
-              size: 14, color: Colors.black.withValues(alpha: 0.55)),
+          child: Icon(
+            Icons.add_link,
+            size: 14,
+            color: Colors.black.withValues(alpha: 0.55),
+          ),
         ),
       ),
     );

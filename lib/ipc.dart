@@ -16,6 +16,9 @@ abstract final class ToMain {
   static const String newSticky = 'newSticky';
   static const String getConnection = 'getConnection';
   static const String linkStickies = 'linkStickies';
+  static const String linkGroup = 'linkGroup';
+  static const String unlinkStickies = 'unlinkStickies';
+  static const String dismissSuggestions = 'dismissSuggestions';
   static const String closeSticky = 'closeSticky';
   static const String drawerSticky = 'drawerSticky';
   static const String focusSticky = 'focusSticky';
@@ -80,9 +83,20 @@ class MainChannel {
   Future<void> linkStickies(String a, String b) =>
       _ch.invokeMethod(ToMain.linkStickies, jsonEncode({'a': a, 'b': b}));
 
+  Future<void> linkGroup(List<String> ids) =>
+      _ch.invokeMethod(ToMain.linkGroup, jsonEncode(ids));
+
+  Future<void> unlinkStickies(String a, String b) =>
+      _ch.invokeMethod(ToMain.unlinkStickies, jsonEncode({'a': a, 'b': b}));
+
+  Future<void> dismissSuggestions(List<String> ids) =>
+      _ch.invokeMethod(ToMain.dismissSuggestions, jsonEncode(ids));
+
   /// 리마인더 설정: atMillis 시각에 그 스티커를 소환(+알림). 기존 예약 대체.
   Future<void> setReminder(String id, int atMillis) => _ch.invokeMethod(
-      ToMain.setReminder, jsonEncode({'id': id, 'at': atMillis}));
+    ToMain.setReminder,
+    jsonEncode({'id': id, 'at': atMillis}),
+  );
 
   Future<void> clearReminder(String id) =>
       _ch.invokeMethod(ToMain.clearReminder, id);
