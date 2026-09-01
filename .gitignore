@@ -53,5 +53,8 @@ app.*.map.json
 # OMC scheduled task lock
 .claude/scheduled_tasks.lock
 
+# Claude Code local permissions and machine-specific paths
+/.claude/settings.local.json
+
 # Release artifacts
 /dist/
