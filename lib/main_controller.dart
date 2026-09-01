@@ -9,11 +9,14 @@ import 'package:window_manager/window_manager.dart';
 
 import 'connection_engine.dart';
 import 'db/database.dart';
+import 'huggingface_model_search.dart';
 import 'ipc.dart';
 import 'link_graph.dart';
 import 'markdown/import_merge.dart';
 import 'markdown/markdown_portability.dart';
+import 'model_manager.dart';
 import 'models/sticky.dart';
+import 'models/model_catalog.dart';
 import 'reminder/notifier.dart';
 import 'reminder/reminder_scheduler.dart';
 import 'report.dart';
@@ -25,10 +28,16 @@ const _uuid = Uuid();
 class MainController extends ChangeNotifier {
   final AppDatabase _db = AppDatabase();
   final ConnectionEngine _conn = ConnectionEngine();
+  final ModelManager _models = ModelManager();
+  final HuggingFaceModelSearch _modelSearch = HuggingFaceModelSearch();
   final List<Sticky> stickies = [];
   final Map<String, WindowController> _windows = {};
   WindowController? _overviewWin; // 전체 보기 창(열려 있으면 변경을 push)
+  WindowController? _modelWin;
   String? _overviewNotice;
+  int _indexedNotes = 0;
+  int _indexTotal = 0;
+  int _indexGeneration = 0;
 
   /// 승인된 연결(지식 그래프). 인접/묶음 알고리즘은 LinkGraph 가 담당.
   final LinkGraph _graph = LinkGraph();
@@ -47,12 +56,22 @@ class MainController extends ChangeNotifier {
 
   /// 빠른 캡처 바를 열 때마다 틱.
   final ValueNotifier<int> captureTick = ValueNotifier<int>(0);
+  final ValueNotifier<int> modelTick = ValueNotifier<int>(0);
+
+  bool get hasSelectedModel => _models.selectedModel != null;
+  bool get modelIndexing => _indexTotal > 0 && _indexedNotes < _indexTotal;
+  int get indexedNotes => _indexedNotes;
+  int get indexTotal => _indexTotal;
 
   Future<void> start() async {
     await const WindowMethodChannel(
       kMainChannel,
       mode: ChannelMode.unidirectional,
     ).setMethodCallHandler(_onCall);
+
+    _models.addListener(_pushModelState);
+    await _models.initialize();
+    _conn.selectModel(_models.selectedModel);
 
     final loaded = await _db.allActive();
     if (loaded.isEmpty) {
@@ -79,8 +98,19 @@ class MainController extends ChangeNotifier {
     }
 
     // 저장된 임베딩 로드(모델 불필요) → 캐시된 메모는 연결 즉시 표시.
-    _conn.onPersist = (id, hash, vec) => _db.upsertEmbedding(id, hash, vec);
-    final stored = {for (final e in await _db.allEmbeddings()) e.stickyId: e};
+    _conn.onPersist = (id, hash, vec) async {
+      final modelId = _conn.modelId;
+      if (modelId != null) {
+        await _db.upsertEmbedding(id, modelId, hash, vec);
+      }
+    };
+    final modelId = _conn.modelId;
+    final stored = modelId == null
+        ? <String, EmbeddingRow>{}
+        : {
+            for (final e in await _db.allEmbeddingsForModel(modelId))
+              e.stickyId: e,
+          };
     for (final s in stickies) {
       final e = stored[s.id];
       if (e != null) {
@@ -111,7 +141,7 @@ class MainController extends ChangeNotifier {
     }
 
     // 백그라운드: 새/바뀐 메모만 임베딩(모델 lazy). 창은 ~1.8초 후 재조회해 채움.
-    unawaited(_conn.warmup(List.of(stickies)).then((_) => _pushOverview()));
+    if (_conn.modelId != null) _beginReindex();
   }
 
   /// 리마인더 발화: 그 스티커를 desk 로 소환 + one-shot 으로 remindAt 비움.
@@ -337,6 +367,44 @@ class MainController extends ChangeNotifier {
           notifyListeners();
           _pushOverview();
         }
+      case ToMain.getModelState:
+        return jsonEncode(_modelState());
+      case ToMain.downloadModel:
+        if (await _models.downloadAndSelect(call.arguments as String)) {
+          await _activateSelectedModel();
+        }
+      case ToMain.cancelModelDownload:
+        _models.cancelDownload();
+      case ToMain.selectModel:
+        await _models.select(call.arguments as String);
+        await _activateSelectedModel();
+      case ToMain.deleteModel:
+        final id = call.arguments as String;
+        final wasSelected = _models.selectedId == id;
+        await _models.remove(id);
+        if (wasSelected) await _activateSelectedModel();
+      case ToMain.searchModels:
+        final result = await _modelSearch.search(call.arguments as String);
+        return jsonEncode({
+          ...result.toJson(),
+          'models': [
+            for (final found in result.models)
+              (_knownProfile(found) ?? found).toJson(),
+          ],
+        });
+      case ToMain.installSearchModel:
+        final value = jsonDecode(call.arguments as String);
+        if (value is! Map<String, dynamic>) {
+          throw const FormatException('모델 프로필 형식이 다릅니다.');
+        }
+        final profile = EmbeddingModel.fromJson(value);
+        final known = _knownProfile(profile);
+        if (known == null) await _models.registerCompatibleModel(profile);
+        if (await _models.downloadAndSelect((known ?? profile).id)) {
+          await _activateSelectedModel();
+        }
+      case ToMain.openModels:
+        await openModels();
     }
     return null;
   }
@@ -739,6 +807,9 @@ class MainController extends ChangeNotifier {
       'notes': notes,
       'edges': edges,
       'suggestedGroups': suggestedGroups,
+      'modelReady': hasSelectedModel,
+      'modelIndexed': _indexedNotes,
+      'modelIndexTotal': _indexTotal,
       if (_overviewNotice != null) 'notice': _overviewNotice,
     };
   }
@@ -765,6 +836,101 @@ class MainController extends ChangeNotifier {
       ),
     );
     _overviewWin = wc;
+  }
+
+  Map<String, dynamic> _modelState() =>
+      _models.toJson(indexed: _indexedNotes, indexTotal: _indexTotal);
+
+  EmbeddingModel? _knownProfile(EmbeddingModel candidate) {
+    for (final profile in _models.catalog) {
+      if (profile.repository == candidate.repository &&
+          profile.revision == candidate.revision) {
+        return profile;
+      }
+    }
+    return null;
+  }
+
+  Future<void> openModels() async {
+    final existing = _modelWin;
+    if (existing != null) {
+      try {
+        await existing.invokeMethod(
+          ToWindow.refresh,
+          jsonEncode(_modelState()),
+        );
+        await existing.show();
+        return;
+      } catch (_) {
+        _modelWin = null;
+      }
+    }
+    _modelWin = await WindowController.create(
+      WindowConfiguration(
+        hiddenAtLaunch: true,
+        arguments: jsonEncode({'kind': 'models', 'state': _modelState()}),
+      ),
+    );
+  }
+
+  Future<void> _activateSelectedModel() async {
+    _indexGeneration++;
+    _conn.selectModel(_models.selectedModel);
+    await _db.deleteAllEmbeddings();
+    _indexedNotes = 0;
+    _indexTotal = _conn.modelId == null ? 0 : stickies.length;
+    _pushModelState();
+    _pushOverview();
+    if (_conn.modelId != null) _beginReindex();
+  }
+
+  void _beginReindex() {
+    final modelId = _conn.modelId;
+    if (modelId == null) return;
+    final generation = ++_indexGeneration;
+    final snapshot = List<Sticky>.of(stickies);
+    _indexedNotes = 0;
+    _indexTotal = snapshot.length;
+    _pushModelState();
+    unawaited(
+      _conn
+          .warmup(
+            snapshot,
+            onProgress: (completed, total) {
+              if (generation != _indexGeneration || _conn.modelId != modelId) {
+                return;
+              }
+              _indexedNotes = completed;
+              _indexTotal = total;
+              _pushModelState();
+            },
+          )
+          .then((_) {
+            if (generation == _indexGeneration) {
+              _pushOverview();
+              _pushModelState();
+            }
+          })
+          .catchError((Object error) {
+            if (generation == _indexGeneration && _conn.modelId == modelId) {
+              _models.reportRuntimeFailure(error);
+              _pushModelState();
+              _pushOverview();
+            }
+          }),
+    );
+  }
+
+  void _pushModelState() {
+    modelTick.value++;
+    final wc = _modelWin;
+    if (wc == null) return;
+    wc.invokeMethod(ToWindow.refresh, jsonEncode(_modelState())).catchError((
+      _,
+    ) {
+      _modelWin = null;
+      return null;
+    });
   }
 
   /// 상태 변화 시 열려있는 전체 보기 창에 최신 데이터 push (껐다 켤 필요 없게).

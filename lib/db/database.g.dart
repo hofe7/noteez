@@ -1071,6 +1071,18 @@ class $EmbeddingsTable extends Embeddings
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _modelIdMeta = const VerificationMeta(
+    'modelId',
+  );
+  @override
+  late final GeneratedColumn<String> modelId = GeneratedColumn<String>(
+    'model_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('legacy-bundled-e5'),
+  );
   static const VerificationMeta _hashMeta = const VerificationMeta('hash');
   @override
   late final GeneratedColumn<String> hash = GeneratedColumn<String>(
@@ -1090,7 +1102,7 @@ class $EmbeddingsTable extends Embeddings
     requiredDuringInsert: true,
   );
   @override
-  List<GeneratedColumn> get $columns => [stickyId, hash, vec];
+  List<GeneratedColumn> get $columns => [stickyId, modelId, hash, vec];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1110,6 +1122,12 @@ class $EmbeddingsTable extends Embeddings
       );
     } else if (isInserting) {
       context.missing(_stickyIdMeta);
+    }
+    if (data.containsKey('model_id')) {
+      context.handle(
+        _modelIdMeta,
+        modelId.isAcceptableOrUnknown(data['model_id']!, _modelIdMeta),
+      );
     }
     if (data.containsKey('hash')) {
       context.handle(
@@ -1140,6 +1158,10 @@ class $EmbeddingsTable extends Embeddings
         DriftSqlType.string,
         data['${effectivePrefix}sticky_id'],
       )!,
+      modelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}model_id'],
+      )!,
       hash: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}hash'],
@@ -1159,10 +1181,12 @@ class $EmbeddingsTable extends Embeddings
 
 class EmbeddingRow extends DataClass implements Insertable<EmbeddingRow> {
   final String stickyId;
+  final String modelId;
   final String hash;
   final String vec;
   const EmbeddingRow({
     required this.stickyId,
+    required this.modelId,
     required this.hash,
     required this.vec,
   });
@@ -1170,6 +1194,7 @@ class EmbeddingRow extends DataClass implements Insertable<EmbeddingRow> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['sticky_id'] = Variable<String>(stickyId);
+    map['model_id'] = Variable<String>(modelId);
     map['hash'] = Variable<String>(hash);
     map['vec'] = Variable<String>(vec);
     return map;
@@ -1178,6 +1203,7 @@ class EmbeddingRow extends DataClass implements Insertable<EmbeddingRow> {
   EmbeddingsCompanion toCompanion(bool nullToAbsent) {
     return EmbeddingsCompanion(
       stickyId: Value(stickyId),
+      modelId: Value(modelId),
       hash: Value(hash),
       vec: Value(vec),
     );
@@ -1190,6 +1216,7 @@ class EmbeddingRow extends DataClass implements Insertable<EmbeddingRow> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return EmbeddingRow(
       stickyId: serializer.fromJson<String>(json['stickyId']),
+      modelId: serializer.fromJson<String>(json['modelId']),
       hash: serializer.fromJson<String>(json['hash']),
       vec: serializer.fromJson<String>(json['vec']),
     );
@@ -1199,20 +1226,27 @@ class EmbeddingRow extends DataClass implements Insertable<EmbeddingRow> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'stickyId': serializer.toJson<String>(stickyId),
+      'modelId': serializer.toJson<String>(modelId),
       'hash': serializer.toJson<String>(hash),
       'vec': serializer.toJson<String>(vec),
     };
   }
 
-  EmbeddingRow copyWith({String? stickyId, String? hash, String? vec}) =>
-      EmbeddingRow(
-        stickyId: stickyId ?? this.stickyId,
-        hash: hash ?? this.hash,
-        vec: vec ?? this.vec,
-      );
+  EmbeddingRow copyWith({
+    String? stickyId,
+    String? modelId,
+    String? hash,
+    String? vec,
+  }) => EmbeddingRow(
+    stickyId: stickyId ?? this.stickyId,
+    modelId: modelId ?? this.modelId,
+    hash: hash ?? this.hash,
+    vec: vec ?? this.vec,
+  );
   EmbeddingRow copyWithCompanion(EmbeddingsCompanion data) {
     return EmbeddingRow(
       stickyId: data.stickyId.present ? data.stickyId.value : this.stickyId,
+      modelId: data.modelId.present ? data.modelId.value : this.modelId,
       hash: data.hash.present ? data.hash.value : this.hash,
       vec: data.vec.present ? data.vec.value : this.vec,
     );
@@ -1222,6 +1256,7 @@ class EmbeddingRow extends DataClass implements Insertable<EmbeddingRow> {
   String toString() {
     return (StringBuffer('EmbeddingRow(')
           ..write('stickyId: $stickyId, ')
+          ..write('modelId: $modelId, ')
           ..write('hash: $hash, ')
           ..write('vec: $vec')
           ..write(')'))
@@ -1229,29 +1264,33 @@ class EmbeddingRow extends DataClass implements Insertable<EmbeddingRow> {
   }
 
   @override
-  int get hashCode => Object.hash(stickyId, hash, vec);
+  int get hashCode => Object.hash(stickyId, modelId, hash, vec);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is EmbeddingRow &&
           other.stickyId == this.stickyId &&
+          other.modelId == this.modelId &&
           other.hash == this.hash &&
           other.vec == this.vec);
 }
 
 class EmbeddingsCompanion extends UpdateCompanion<EmbeddingRow> {
   final Value<String> stickyId;
+  final Value<String> modelId;
   final Value<String> hash;
   final Value<String> vec;
   final Value<int> rowid;
   const EmbeddingsCompanion({
     this.stickyId = const Value.absent(),
+    this.modelId = const Value.absent(),
     this.hash = const Value.absent(),
     this.vec = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   EmbeddingsCompanion.insert({
     required String stickyId,
+    this.modelId = const Value.absent(),
     required String hash,
     required String vec,
     this.rowid = const Value.absent(),
@@ -1260,12 +1299,14 @@ class EmbeddingsCompanion extends UpdateCompanion<EmbeddingRow> {
        vec = Value(vec);
   static Insertable<EmbeddingRow> custom({
     Expression<String>? stickyId,
+    Expression<String>? modelId,
     Expression<String>? hash,
     Expression<String>? vec,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (stickyId != null) 'sticky_id': stickyId,
+      if (modelId != null) 'model_id': modelId,
       if (hash != null) 'hash': hash,
       if (vec != null) 'vec': vec,
       if (rowid != null) 'rowid': rowid,
@@ -1274,12 +1315,14 @@ class EmbeddingsCompanion extends UpdateCompanion<EmbeddingRow> {
 
   EmbeddingsCompanion copyWith({
     Value<String>? stickyId,
+    Value<String>? modelId,
     Value<String>? hash,
     Value<String>? vec,
     Value<int>? rowid,
   }) {
     return EmbeddingsCompanion(
       stickyId: stickyId ?? this.stickyId,
+      modelId: modelId ?? this.modelId,
       hash: hash ?? this.hash,
       vec: vec ?? this.vec,
       rowid: rowid ?? this.rowid,
@@ -1291,6 +1334,9 @@ class EmbeddingsCompanion extends UpdateCompanion<EmbeddingRow> {
     final map = <String, Expression>{};
     if (stickyId.present) {
       map['sticky_id'] = Variable<String>(stickyId.value);
+    }
+    if (modelId.present) {
+      map['model_id'] = Variable<String>(modelId.value);
     }
     if (hash.present) {
       map['hash'] = Variable<String>(hash.value);
@@ -1308,6 +1354,7 @@ class EmbeddingsCompanion extends UpdateCompanion<EmbeddingRow> {
   String toString() {
     return (StringBuffer('EmbeddingsCompanion(')
           ..write('stickyId: $stickyId, ')
+          ..write('modelId: $modelId, ')
           ..write('hash: $hash, ')
           ..write('vec: $vec, ')
           ..write('rowid: $rowid')
@@ -2594,6 +2641,7 @@ typedef $$LinksTableProcessedTableManager =
 typedef $$EmbeddingsTableCreateCompanionBuilder =
     EmbeddingsCompanion Function({
       required String stickyId,
+      Value<String> modelId,
       required String hash,
       required String vec,
       Value<int> rowid,
@@ -2601,6 +2649,7 @@ typedef $$EmbeddingsTableCreateCompanionBuilder =
 typedef $$EmbeddingsTableUpdateCompanionBuilder =
     EmbeddingsCompanion Function({
       Value<String> stickyId,
+      Value<String> modelId,
       Value<String> hash,
       Value<String> vec,
       Value<int> rowid,
@@ -2617,6 +2666,11 @@ class $$EmbeddingsTableFilterComposer
   });
   ColumnFilters<String> get stickyId => $composableBuilder(
     column: $table.stickyId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get modelId => $composableBuilder(
+    column: $table.modelId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2645,6 +2699,11 @@ class $$EmbeddingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get modelId => $composableBuilder(
+    column: $table.modelId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get hash => $composableBuilder(
     column: $table.hash,
     builder: (column) => ColumnOrderings(column),
@@ -2667,6 +2726,9 @@ class $$EmbeddingsTableAnnotationComposer
   });
   GeneratedColumn<String> get stickyId =>
       $composableBuilder(column: $table.stickyId, builder: (column) => column);
+
+  GeneratedColumn<String> get modelId =>
+      $composableBuilder(column: $table.modelId, builder: (column) => column);
 
   GeneratedColumn<String> get hash =>
       $composableBuilder(column: $table.hash, builder: (column) => column);
@@ -2707,11 +2769,13 @@ class $$EmbeddingsTableTableManager
           updateCompanionCallback:
               ({
                 Value<String> stickyId = const Value.absent(),
+                Value<String> modelId = const Value.absent(),
                 Value<String> hash = const Value.absent(),
                 Value<String> vec = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => EmbeddingsCompanion(
                 stickyId: stickyId,
+                modelId: modelId,
                 hash: hash,
                 vec: vec,
                 rowid: rowid,
@@ -2719,11 +2783,13 @@ class $$EmbeddingsTableTableManager
           createCompanionCallback:
               ({
                 required String stickyId,
+                Value<String> modelId = const Value.absent(),
                 required String hash,
                 required String vec,
                 Value<int> rowid = const Value.absent(),
               }) => EmbeddingsCompanion.insert(
                 stickyId: stickyId,
+                modelId: modelId,
                 hash: hash,
                 vec: vec,
                 rowid: rowid,

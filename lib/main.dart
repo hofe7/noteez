@@ -10,6 +10,7 @@ import 'models/sticky.dart';
 import 'report.dart';
 import 'windows/control_window.dart';
 import 'windows/graph_window.dart' show OverviewWindowApp;
+import 'windows/model_window.dart';
 import 'windows/report_window.dart';
 import 'windows/search_palette.dart';
 import 'windows/sticky_window.dart';
@@ -90,6 +91,9 @@ Future<void> main(List<String> args) async {
     final suggestedGroups = ((m['suggestedGroups'] as List?) ?? const [])
         .cast<Map<String, dynamic>>();
     final notice = m['notice'] as String?;
+    final modelReady = m['modelReady'] as bool? ?? true;
+    final modelIndexed = m['modelIndexed'] as int? ?? 0;
+    final modelIndexTotal = m['modelIndexTotal'] as int? ?? 0;
     windowManager.waitUntilReadyToShow(
       const WindowOptions(size: Size(460, 640), center: true),
       () async {
@@ -103,8 +107,24 @@ Future<void> main(List<String> args) async {
         edges: edges,
         suggestedGroups: suggestedGroups,
         notice: notice,
+        modelReady: modelReady,
+        modelIndexed: modelIndexed,
+        modelIndexTotal: modelIndexTotal,
       ),
     );
+    return;
+  }
+
+  if (m['kind'] == 'models') {
+    final state = m['state'] as Map<String, dynamic>;
+    windowManager.waitUntilReadyToShow(
+      const WindowOptions(size: Size(560, 620), center: true),
+      () async {
+        await windowManager.setTitle('Noteez · AI 모델');
+        await windowManager.show();
+      },
+    );
+    runApp(ModelWindowApp(initialState: state));
     return;
   }
 

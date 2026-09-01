@@ -10,25 +10,40 @@ class OnnxEmbedder {
 
   void init(String modelPath) {
     OrtEnv.instance.init();
-    _session = OrtSession.fromFile(File(modelPath), OrtSessionOptions());
+    final options = OrtSessionOptions();
+    try {
+      _session = OrtSession.fromFile(File(modelPath), options);
+    } finally {
+      options.release();
+    }
+  }
+
+  void dispose() {
+    _session?.release();
+    _session = null;
   }
 
   /// 토큰 id → 384차원 정규화 임베딩 (mean pooling + L2 normalize, e5 방식).
   List<double> embedFromIds(List<int> ids, List<int> mask) {
     final s = _session!;
     final n = ids.length;
-    final idT =
-        OrtValueTensor.createTensorWithDataList(Int64List.fromList(ids), [1, n]);
-    final mT =
-        OrtValueTensor.createTensorWithDataList(Int64List.fromList(mask), [1, n]);
+    final idT = OrtValueTensor.createTensorWithDataList(
+      Int64List.fromList(ids),
+      [1, n],
+    );
+    final mT = OrtValueTensor.createTensorWithDataList(
+      Int64List.fromList(mask),
+      [1, n],
+    );
     final ttT = OrtValueTensor.createTensorWithDataList(Int64List(n), [1, n]);
     final ro = OrtRunOptions();
 
-    final outs = s.run(ro, {
+    final inputs = <String, OrtValue>{
       'input_ids': idT,
       'attention_mask': mT,
-      'token_type_ids': ttT,
-    }, s.outputNames);
+      if (s.inputNames.contains('token_type_ids')) 'token_type_ids': ttT,
+    };
+    final outs = s.run(ro, inputs, s.outputNames);
 
     final value = (outs[0] as OrtValueTensor).value as List; // [1][seq][dim]
     final seq = value[0] as List;

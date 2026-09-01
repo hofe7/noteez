@@ -136,7 +136,7 @@ v5  Markdown/Notion/Obsidian 이동성 ✓
   임베딩 캐시, 추천 숨김, Markdown 원본 대응을 저장한다.
 - **에디터:** Flutter Quill은 편집 표현으로만 사용하고, 영속 데이터는
   `Block` sealed class(텍스트/할 일/이미지)로 유지한다.
-- **검색/연결:** multilingual-e5-small ONNX 모델을 온디바이스에서 실행한다.
+- **검색/연결:** 사용자가 고른 multilingual-e5 ONNX 모델을 온디바이스에서 실행한다.
   메모 내용은 외부로 나가지 않는다.
 - **멀티윈도우:** 메인/스티커/전체 보기/보고 창이 IPC로 상태를 주고받는다.
 - **이동성:** 표준 Markdown + YAML front matter + Obsidian wiki link.
@@ -147,8 +147,30 @@ v5  Markdown/Notion/Obsidian 이동성 ✓
 ## 실행 (개발)
 
 ```bash
+flutter pub get
 flutter run -d macos
 ```
+
+임베딩 모델은 소스나 앱 번들에 포함하지 않는다. 실행 후 메뉴바의 **AI 연결
+모델…**에서 검증된 모델을 선택하면 원 제작자의 Hugging Face 저장소에서 직접
+다운로드한다. 모델이 없어도 메모 작성, 키워드 검색, 가져오기·내보내기는 모두
+동작한다.
+
+## AI 연결 모델
+
+- **Multilingual E5 Small:** 빠르고 가벼운 기본 추천(약 129MB, 384차원)
+- **Multilingual E5 Base:** 정확도 우선(약 282MB, 768차원)
+
+다운로드 파일은 고정된 Hugging Face revision과 SHA-256으로 검증한 뒤 macOS
+Application Support 아래에 저장한다. 모델을 바꾸면 기존 메모 임베딩을 새 모델로
+백그라운드에서 다시 만든다. 모델 파일만 네트워크로 받으며 메모 내용과 임베딩은
+외부로 전송하지 않는다.
+
+모델 창에서 Hugging Face를 직접 검색할 수도 있다. 검색 결과를 그대로 실행하지
+않고 multilingual-e5 계열, ONNX, XLM-R 입력 구조, 허용 라이선스, 고정 commit,
+LFS 파일 크기와 SHA-256이 모두 확인된 항목만 설치 버튼을 연다. 원격 저장소의
+Python 코드나 `custom_code`는 내려받거나 실행하지 않는다. 커뮤니티 모델은 설치
+전에 모델 창의 출처와 라이선스를 함께 확인할 수 있다.
 
 ## Markdown·Notion·Obsidian 이동
 

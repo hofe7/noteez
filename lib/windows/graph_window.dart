@@ -17,12 +17,18 @@ class OverviewWindowApp extends StatelessWidget {
   final List<Map<String, dynamic>> edges; // {a,b}
   final List<Map<String, dynamic>> suggestedGroups; // {ids:[...],score}
   final String? notice;
+  final bool modelReady;
+  final int modelIndexed;
+  final int modelIndexTotal;
   const OverviewWindowApp({
     super.key,
     required this.notes,
     required this.edges,
     required this.suggestedGroups,
     this.notice,
+    this.modelReady = true,
+    this.modelIndexed = 0,
+    this.modelIndexTotal = 0,
   });
 
   @override
@@ -36,6 +42,9 @@ class OverviewWindowApp extends StatelessWidget {
         edges: edges,
         suggestedGroups: suggestedGroups,
         notice: notice,
+        modelReady: modelReady,
+        modelIndexed: modelIndexed,
+        modelIndexTotal: modelIndexTotal,
       ),
     );
   }
@@ -50,12 +59,18 @@ class OverviewWindow extends StatefulWidget {
   final List<Map<String, dynamic>> edges;
   final List<Map<String, dynamic>> suggestedGroups;
   final String? notice;
+  final bool modelReady;
+  final int modelIndexed;
+  final int modelIndexTotal;
   const OverviewWindow({
     super.key,
     required this.notes,
     required this.edges,
     required this.suggestedGroups,
     this.notice,
+    this.modelReady = true,
+    this.modelIndexed = 0,
+    this.modelIndexTotal = 0,
   });
 
   @override
@@ -76,6 +91,9 @@ class _OverviewWindowState extends State<OverviewWindow> {
   late List<Map<String, dynamic>> _edges = widget.edges;
   late List<Map<String, dynamic>> _suggestedGroups = widget.suggestedGroups;
   late String? _notice = widget.notice;
+  late bool _modelReady = widget.modelReady;
+  late int _modelIndexed = widget.modelIndexed;
+  late int _modelIndexTotal = widget.modelIndexTotal;
 
   @override
   void initState() {
@@ -91,6 +109,9 @@ class _OverviewWindowState extends State<OverviewWindow> {
             _suggestedGroups = ((m['suggestedGroups'] as List?) ?? const [])
                 .cast<Map<String, dynamic>>();
             if (m['notice'] is String) _notice = m['notice'] as String;
+            _modelReady = m['modelReady'] as bool? ?? _modelReady;
+            _modelIndexed = m['modelIndexed'] as int? ?? _modelIndexed;
+            _modelIndexTotal = m['modelIndexTotal'] as int? ?? _modelIndexTotal;
           });
         }
         return null;
@@ -207,6 +228,8 @@ class _OverviewWindowState extends State<OverviewWindow> {
           children: [
             _header(g.clusters.length, suggested.clusters.length),
             _controls(),
+            if (!_modelReady || _modelIndexed < _modelIndexTotal)
+              _modelBanner(),
             if (_notice != null) _noticeBanner(),
             const Divider(height: 1, color: AppColors.hair),
             Expanded(
@@ -266,6 +289,32 @@ class _OverviewWindowState extends State<OverviewWindow> {
           visualDensity: VisualDensity.compact,
           icon: const Icon(Icons.close_rounded, size: 16),
         ),
+      ],
+    ),
+  );
+
+  Widget _modelBanner() => Container(
+    margin: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+    padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+    decoration: BoxDecoration(
+      color: AppColors.accentTint(0.09),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: AppColors.accentTint(0.2)),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.auto_awesome_rounded, size: 16, color: _accent),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            _modelReady
+                ? '관련 메모를 다시 읽는 중 · $_modelIndexed/$_modelIndexTotal'
+                : '관련 메모 추천은 AI 모델을 받은 뒤 시작됩니다.',
+            style: const TextStyle(fontSize: 12.5, color: AppColors.ink2),
+          ),
+        ),
+        if (!_modelReady)
+          TextButton(onPressed: _main.openModels, child: const Text('모델 받기')),
       ],
     ),
   );
