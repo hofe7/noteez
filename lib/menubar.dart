@@ -86,6 +86,8 @@ class MenubarController with TrayListener {
       MenuItem(key: 'importNotionZip', label: 'Notion ZIP 가져오기…'),
       MenuItem(key: 'exportMarkdown', label: '모든 메모를 Markdown으로 내보내기…'),
       MenuItem.separator(),
+      MenuItem(key: 'models', label: 'AI 연결 모델…'),
+      MenuItem.separator(),
       MenuItem(key: 'quit', label: 'Noteez 종료'),
     ],
   );
@@ -119,6 +121,8 @@ class MenubarController with TrayListener {
         unawaited(_importNotionZip());
       case 'exportMarkdown':
         unawaited(_exportAll());
+      case 'models':
+        mainController.openModels();
       case 'quit':
         _quit();
     }

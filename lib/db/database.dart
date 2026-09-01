@@ -48,6 +48,8 @@ class Links extends Table {
 @DataClassName('EmbeddingRow')
 class Embeddings extends Table {
   TextColumn get stickyId => text()();
+  TextColumn get modelId =>
+      text().withDefault(const Constant('legacy-bundled-e5'))();
   TextColumn get hash => text()();
   TextColumn get vec => text()(); // JSON [double,...]
 
@@ -91,7 +93,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -103,18 +105,31 @@ class AppDatabase extends _$AppDatabase {
       if (from < 6) await m.addColumn(stickies, stickies.remindAt);
       if (from < 7) await m.createTable(suggestionDismissals);
       if (from < 8) await m.createTable(importOrigins);
+      if (from < 9) await m.addColumn(embeddings, embeddings.modelId);
     },
   );
 
-  Future<List<EmbeddingRow>> allEmbeddings() => select(embeddings).get();
+  Future<List<EmbeddingRow>> allEmbeddingsForModel(String modelId) =>
+      (select(embeddings)..where((t) => t.modelId.equals(modelId))).get();
 
-  Future<void> upsertEmbedding(String id, String hash, String vec) =>
-      into(embeddings).insertOnConflictUpdate(
-        EmbeddingsCompanion.insert(stickyId: id, hash: hash, vec: vec),
-      );
+  Future<void> upsertEmbedding(
+    String id,
+    String modelId,
+    String hash,
+    String vec,
+  ) => into(embeddings).insertOnConflictUpdate(
+    EmbeddingsCompanion.insert(
+      stickyId: id,
+      modelId: Value(modelId),
+      hash: hash,
+      vec: vec,
+    ),
+  );
 
   Future<void> deleteEmbedding(String id) =>
       (delete(embeddings)..where((t) => t.stickyId.equals(id))).go();
+
+  Future<void> deleteAllEmbeddings() => delete(embeddings).go();
 
   Future<List<LinkRow>> allActiveLinks() =>
       (select(links)..where((t) => t.deletedAt.isNull())).get();

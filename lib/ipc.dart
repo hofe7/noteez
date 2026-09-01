@@ -24,6 +24,14 @@ abstract final class ToMain {
   static const String focusSticky = 'focusSticky';
   static const String setReminder = 'setReminder';
   static const String clearReminder = 'clearReminder';
+  static const String getModelState = 'getModelState';
+  static const String downloadModel = 'downloadModel';
+  static const String cancelModelDownload = 'cancelModelDownload';
+  static const String selectModel = 'selectModel';
+  static const String deleteModel = 'deleteModel';
+  static const String searchModels = 'searchModels';
+  static const String installSearchModel = 'installSearchModel';
+  static const String openModels = 'openModels';
 }
 
 /// 메인 → 개별 창 메서드명 (각 창의 기본 채널로 invoke).
@@ -100,6 +108,31 @@ class MainChannel {
 
   Future<void> clearReminder(String id) =>
       _ch.invokeMethod(ToMain.clearReminder, id);
+
+  Future<Map<String, dynamic>> getModelState() async =>
+      jsonDecode(await _ch.invokeMethod(ToMain.getModelState) as String)
+          as Map<String, dynamic>;
+
+  Future<void> downloadModel(String id) =>
+      _ch.invokeMethod(ToMain.downloadModel, id);
+
+  Future<void> cancelModelDownload() =>
+      _ch.invokeMethod(ToMain.cancelModelDownload);
+
+  Future<void> selectModel(String id) =>
+      _ch.invokeMethod(ToMain.selectModel, id);
+
+  Future<void> deleteModel(String id) =>
+      _ch.invokeMethod(ToMain.deleteModel, id);
+
+  Future<Map<String, dynamic>> searchModels(String query) async =>
+      jsonDecode(await _ch.invokeMethod(ToMain.searchModels, query) as String)
+          as Map<String, dynamic>;
+
+  Future<void> installSearchModel(Map<String, dynamic> profile) =>
+      _ch.invokeMethod(ToMain.installSearchModel, jsonEncode(profile));
+
+  Future<void> openModels() => _ch.invokeMethod(ToMain.openModels);
 
   Future<ConnectionResult> getConnection(String id) async =>
       ConnectionResult.parse(await _ch.invokeMethod(ToMain.getConnection, id));

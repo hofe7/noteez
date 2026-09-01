@@ -21,6 +21,20 @@ void main() {
     expect(await db.allActiveLinks(), isEmpty);
   });
 
+  test('embedding cache is isolated by selected model', () async {
+    await db.upsertEmbedding('note', 'e5-small', 'hash', '[1,2,3]');
+
+    expect(await db.allEmbeddingsForModel('e5-small'), hasLength(1));
+    expect(await db.allEmbeddingsForModel('e5-base'), isEmpty);
+
+    await db.upsertEmbedding('note', 'e5-base', 'hash', '[4,5,6]');
+    expect(await db.allEmbeddingsForModel('e5-small'), isEmpty);
+    expect((await db.allEmbeddingsForModel('e5-base')).single.vec, '[4,5,6]');
+
+    await db.deleteAllEmbeddings();
+    expect(await db.allEmbeddingsForModel('e5-base'), isEmpty);
+  });
+
   test(
     'suggestion dismissal is persisted, updated, and deleted per note',
     () async {
@@ -69,23 +83,26 @@ void main() {
     expect(await db.importOrigin('file:/vault/a.md'), isNull);
   });
 
-  test('upsert restores a previously soft-deleted Markdown round-trip ID', () async {
-    final now = DateTime(2026, 8, 27);
-    final sticky = Sticky(
-      id: 'restored-id',
-      blocks: [const TextBlock(id: 'block', text: 'Restored')],
-      colorIndex: 0,
-      x: 0,
-      y: 0,
-      createdAt: now,
-      updatedAt: now,
-    );
-    await db.upsert(sticky);
-    await db.softDelete(sticky.id);
-    expect(await db.allActive(), isEmpty);
+  test(
+    'upsert restores a previously soft-deleted Markdown round-trip ID',
+    () async {
+      final now = DateTime(2026, 8, 27);
+      final sticky = Sticky(
+        id: 'restored-id',
+        blocks: [const TextBlock(id: 'block', text: 'Restored')],
+        colorIndex: 0,
+        x: 0,
+        y: 0,
+        createdAt: now,
+        updatedAt: now,
+      );
+      await db.upsert(sticky);
+      await db.softDelete(sticky.id);
+      expect(await db.allActive(), isEmpty);
 
-    await db.upsert(sticky);
+      await db.upsert(sticky);
 
-    expect((await db.allActive()).single.id, sticky.id);
-  });
+      expect((await db.allActive()).single.id, sticky.id);
+    },
+  );
 }

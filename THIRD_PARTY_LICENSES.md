@@ -1,22 +1,29 @@
 # Third-Party Licenses
 
-Noteez bundles the following third-party components. All are MIT-licensed and
-may be redistributed in a commercial application provided this notice ships
-with the app.
+Noteez uses the following third-party components. ONNX Runtime ships with the
+app. Embedding models are optional downloads fetched directly from their
+authors' Hugging Face repositories. The model download request contains no note
+content.
 
-## On-device embedding model — intfloat/multilingual-e5-small
+## Optional on-device embedding models — intfloat/multilingual-e5
 
 - **Source:** https://huggingface.co/intfloat/multilingual-e5-small
+- **Alternative:** https://huggingface.co/intfloat/multilingual-e5-base
 - **License:** MIT
-- **Form bundled:** int8-quantized ONNX (`e5_int8.onnx`, ~113 MB) + tokenizer
-  (`e5_tokenizer.json`, ~16 MB, XLM-RoBERTa unigram, 250,002-token vocab).
-- **Identification (verified from the artifacts themselves):** 384-dimensional
-  output, `input_ids`/`attention_mask`/`token_type_ids` inputs, XLM-RoBERTa
-  Unigram tokenizer with a 250,002-entry vocabulary and Metaspace
-  pre-tokenizer. Among the e5 family, only `multilingual-e5-small` matches a
-  384-dim model paired with the XLM-R tokenizer.
+- **Form downloaded:** publisher-provided int8 ONNX model and tokenizer JSON.
+- **Integrity:** Noteez pins a repository revision and SHA-256 for every file
+  listed in its model catalog.
 
-The model runs fully on-device; no note content leaves the machine.
+Inference runs fully on-device; no note content leaves the machine.
+
+## User-selected Hugging Face models
+
+Noteez can discover additional compatible models but does not redistribute
+them. A model is fetched only after the user chooses it, directly from its
+publisher at a pinned revision. Noteez accepts only a small permissive-license
+allowlist and displays the repository and license before download. Each model
+remains subject to the license and terms shown by its publisher; Noteez's MIT
+license does not relicense those files. Remote repository code is never run.
 
 ## ONNX Runtime
 

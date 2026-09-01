@@ -53,8 +53,8 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   bool get _browsing => !_capture && _query.trim().isEmpty;
   Sticky? get _selectedSticky =>
       (!_capture && _results.isNotEmpty && _selected < _results.length)
-          ? _results[_selected]
-          : null;
+      ? _results[_selected]
+      : null;
 
   // 색은 전부 AppColors(단일 소스) 별칭 — 로컬 이름만 유지.
   static const Color _accent = AppColors.accent; // 시그니처 허니 앰버
@@ -101,8 +101,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
     if (_itemCount == 0) return;
     setState(() {
       _selected = (_selected + delta).clamp(0, _itemCount - 1);
-      _panelId =
-          _selected < _results.length ? _results[_selected].id : null;
+      _panelId = _selected < _results.length ? _results[_selected].id : null;
     });
     _ensureVisible();
   }
@@ -128,11 +127,17 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
     final vp = _scroll.position.viewportDimension;
     final cur = _scroll.offset;
     if (target < cur) {
-      _scroll.animateTo(target,
-          duration: const Duration(milliseconds: 120), curve: Curves.easeOut);
+      _scroll.animateTo(
+        target,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+      );
     } else if (target + _rowExtent > cur + vp) {
-      _scroll.animateTo(target + _rowExtent - vp,
-          duration: const Duration(milliseconds: 120), curve: Curves.easeOut);
+      _scroll.animateTo(
+        target + _rowExtent - vp,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+      );
     }
   }
 
@@ -142,6 +147,11 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
     windowManager.addListener(this);
     mainController.searchTick.addListener(_onOpen);
     mainController.captureTick.addListener(_onCapture);
+    mainController.modelTick.addListener(_onModelState);
+  }
+
+  void _onModelState() {
+    if (mounted) setState(() {});
   }
 
   // ⌘⇧K: 검색 모드로 열기.
@@ -220,6 +230,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
     windowManager.removeListener(this);
     mainController.searchTick.removeListener(_onOpen);
     mainController.captureTick.removeListener(_onCapture);
+    mainController.modelTick.removeListener(_onModelState);
     _debounce?.cancel();
     _q.dispose();
     _focus.dispose();
@@ -247,113 +258,131 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
             color: _capture ? _paper : _panel,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-                color: _capture ? const Color(0x14000000) : const Color(0x0F000000)),
+              color: _capture
+                  ? const Color(0x14000000)
+                  : const Color(0x0F000000),
+            ),
             boxShadow: const [
               // 2겹: 넓고 옅은 앰비언트 + 가까운 또렷한 그림자 → 떠 있는 느낌.
               BoxShadow(
-                  color: Color(0x1A000000), blurRadius: 28, offset: Offset(0, 12)),
+                color: Color(0x1A000000),
+                blurRadius: 28,
+                offset: Offset(0, 12),
+              ),
               BoxShadow(
-                  color: Color(0x10000000), blurRadius: 6, offset: Offset(0, 2)),
+                color: Color(0x10000000),
+                blurRadius: 6,
+                offset: Offset(0, 2),
+              ),
             ],
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
               Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 16, 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Icon(
-                            _capture
-                                ? Icons.sticky_note_2_outlined
-                                : Icons.search,
-                            color: _capture ? _inkOnPaper : Colors.black38,
-                            size: 22),
+                padding: const EdgeInsets.fromLTRB(18, 16, 16, 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Icon(
+                        _capture ? Icons.sticky_note_2_outlined : Icons.search,
+                        color: _capture ? _inkOnPaper : Colors.black38,
+                        size: 22,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _q,
-                          focusNode: _focus,
-                          autofocus: true,
-                          maxLines: _capture ? 3 : 1,
-                          minLines: 1,
-                          keyboardType: _capture
-                              ? TextInputType.multiline
-                              : TextInputType.text,
-                          style: const TextStyle(
-                              fontSize: 16,
-                              height: 1.3,
-                              fontWeight: FontWeight.w500),
-                          cursorColor: _capture ? _inkOnPaper : _accent,
-                          cursorWidth: 2,
-                          cursorRadius: const Radius.circular(1),
-                          decoration: InputDecoration(
-                            border: InputBorder.none,
-                            hintText: _capture ? '여기에 메모…' : '메모 검색…',
-                            hintStyle: TextStyle(
-                                color: _capture
-                                    ? _inkOnPaper.withValues(alpha: 0.45)
-                                    : Colors.black26,
-                                fontWeight: FontWeight.w400),
-                            isDense: true,
-                          ),
-                          onChanged: (v) {
-                            if (!_capture) _onChanged(v);
-                          },
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: _q,
+                        focusNode: _focus,
+                        autofocus: true,
+                        maxLines: _capture ? 3 : 1,
+                        minLines: 1,
+                        keyboardType: _capture
+                            ? TextInputType.multiline
+                            : TextInputType.text,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          height: 1.3,
+                          fontWeight: FontWeight.w500,
                         ),
+                        cursorColor: _capture ? _inkOnPaper : _accent,
+                        cursorWidth: 2,
+                        cursorRadius: const Radius.circular(1),
+                        decoration: InputDecoration(
+                          border: InputBorder.none,
+                          hintText: _capture ? '여기에 메모…' : '메모 검색…',
+                          hintStyle: TextStyle(
+                            color: _capture
+                                ? _inkOnPaper.withValues(alpha: 0.45)
+                                : Colors.black26,
+                            fontWeight: FontWeight.w400,
+                          ),
+                          isDense: true,
+                        ),
+                        onChanged: (v) {
+                          if (!_capture) _onChanged(v);
+                        },
                       ),
-                    ],
+                    ),
+                  ],
+                ),
+              ),
+              if (_capture) ...[
+                const Spacer(), // 힌트를 종이 바닥에 고정(스티커 푸터처럼)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(18, 8, 16, 14),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(
+                        color: _inkOnPaper.withValues(alpha: 0.12),
+                      ),
+                    ),
+                  ),
+                  child: Text(
+                    '↵ 저장    ⇧↵ 줄바꿈    esc 취소',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: _inkOnPaper.withValues(alpha: 0.55),
+                    ),
                   ),
                 ),
-                if (_capture) ...[
-                  const Spacer(), // 힌트를 종이 바닥에 고정(스티커 푸터처럼)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(18, 8, 16, 14),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        top: BorderSide(
-                            color: _inkOnPaper.withValues(alpha: 0.12)),
-                      ),
-                    ),
-                    child: Text(
-                      '↵ 저장    ⇧↵ 줄바꿈    esc 취소',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: _inkOnPaper.withValues(alpha: 0.55)),
-                    ),
-                  ),
-                ] else ...[
-                  if (_browsing) dateChips(_applyChip),
-                  const Divider(
-                      height: 1,
-                      thickness: 1,
-                      indent: 18,
-                      endIndent: 16,
-                      color: Color(0x0D000000)),
-                  Expanded(
-                    child: _split
-                        ? Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Expanded(flex: 5, child: _mainList(results)),
-                              const VerticalDivider(
-                                  width: 1,
-                                  thickness: 1,
-                                  color: Color(0x0D000000)),
-                              Expanded(flex: 4, child: _relatedPanel()),
-                            ],
-                          )
-                        : _mainList(results),
-                  ),
-                  if (!_split && !_browsing && _relatedItems().isNotEmpty)
-                    _relatedInline(),
-                  _footerHint(),
-                ],
+              ] else ...[
+                if (_browsing) dateChips(_applyChip),
+                const Divider(
+                  height: 1,
+                  thickness: 1,
+                  indent: 18,
+                  endIndent: 16,
+                  color: Color(0x0D000000),
+                ),
+                Expanded(
+                  child: _split
+                      ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(flex: 5, child: _mainList(results)),
+                            const VerticalDivider(
+                              width: 1,
+                              thickness: 1,
+                              color: Color(0x0D000000),
+                            ),
+                            Expanded(flex: 4, child: _relatedPanel()),
+                          ],
+                        )
+                      : _mainList(results),
+                ),
+                if (!_split && !_browsing && _relatedItems().isNotEmpty)
+                  _relatedInline(),
+                if (!_browsing &&
+                    (!mainController.hasSelectedModel ||
+                        mainController.modelIndexing))
+                  _modelStatus(),
+                _footerHint(),
+              ],
             ],
           ),
         ),
@@ -362,8 +391,10 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   }
 
   Widget _resultTile(Sticky s, int i) {
-    final openTodos =
-        s.blocks.whereType<TodoBlock>().where((t) => !t.checked).length;
+    final openTodos = s.blocks
+        .whereType<TodoBlock>()
+        .where((t) => !t.checked)
+        .length;
     return paletteRow(
       selected: _selected == i,
       onTap: () => _open(s),
@@ -425,8 +456,9 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
                 style: const TextStyle(fontSize: 14, color: Colors.black54),
                 children: [
                   TextSpan(
-                      text: '“${_query.trim()}”',
-                      style: const TextStyle(color: Colors.black87)),
+                    text: '“${_query.trim()}”',
+                    style: const TextStyle(color: Colors.black87),
+                  ),
                   const TextSpan(text: ' 새 메모'),
                 ],
               ),
@@ -477,8 +509,12 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   }
 
   // 메모 한 줄(색칩 + 미리보기). 클릭 → 그 메모 소환. (관련 패널에서 사용)
-  Widget _noteRow(Map<String, dynamic> m,
-      {bool bold = false, bool indent = false, Widget? trailing}) {
+  Widget _noteRow(
+    Map<String, dynamic> m, {
+    bool bold = false,
+    bool indent = false,
+    Widget? trailing,
+  }) {
     return MouseRegion(
       onEnter: (_) {
         final id = m['id'] as String;
@@ -487,26 +523,27 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
       child: InkWell(
         onTap: () => _openId(m['id'] as String),
         borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(indent ? 26 : 12, 8, 12, 8),
-        child: Row(
-          children: [
-            colorChip(m['color'] as int),
-            const SizedBox(width: 11),
-            Expanded(
-              child: Text(
-                m['preview'] as String,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(indent ? 26 : 12, 8, 12, 8),
+          child: Row(
+            children: [
+              colorChip(m['color'] as int),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Text(
+                  m['preview'] as String,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
                     fontSize: 13.5,
                     color: bold ? Colors.black87 : Colors.black54,
-                    fontWeight: bold ? FontWeight.w600 : FontWeight.w400),
+                    fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
               ),
-            ),
-            ?trailing,
-          ],
-        ),
+              ?trailing,
+            ],
+          ),
         ),
       ),
     );
@@ -536,10 +573,15 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
           ? const Center(
               child: Padding(
                 padding: EdgeInsets.all(20),
-                child: Text('메모에 마우스를 올리면\n같은 묶음 메모가 여기에',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 12.5, color: Colors.black38, height: 1.5)),
+                child: Text(
+                  '메모에 마우스를 올리면\n같은 묶음 메모가 여기에',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: Colors.black38,
+                    height: 1.5,
+                  ),
+                ),
               ),
             )
           : ListView(
@@ -552,9 +594,14 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
                 if (items.isEmpty)
                   const Padding(
                     padding: EdgeInsets.fromLTRB(8, 6, 8, 6),
-                    child: Text('이 메모는 아직 다른 메모와 묶이지 않았어요',
-                        style: TextStyle(
-                            fontSize: 12.5, color: Colors.black38, height: 1.4)),
+                    child: Text(
+                      '이 메모는 아직 다른 메모와 묶이지 않았어요',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Colors.black38,
+                        height: 1.4,
+                      ),
+                    ),
                   )
                 else
                   for (final m in items) _noteRow(m),
@@ -611,10 +658,11 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                  height: 1.3),
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+                height: 1.3,
+              ),
             ),
           ),
         ],
@@ -634,9 +682,11 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
                 children: [
                   const TextSpan(text: '↑↓ 이동   ↵ 열기   esc 닫기'),
                   TextSpan(
-                      text: '     6월 이후·6/1~6/10 기간',
-                      style:
-                          TextStyle(color: Colors.black.withValues(alpha: 0.22))),
+                    text: '     6월 이후·6/1~6/10 기간',
+                    style: TextStyle(
+                      color: Colors.black.withValues(alpha: 0.22),
+                    ),
+                  ),
                 ],
               ),
               maxLines: 1,
@@ -661,6 +711,48 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _modelStatus() {
+    final ready = mainController.hasSelectedModel;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 4, 14, 2),
+      padding: const EdgeInsets.fromLTRB(12, 7, 8, 7),
+      decoration: BoxDecoration(
+        color: _accent.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            ready ? Icons.auto_awesome_rounded : Icons.psychology_outlined,
+            size: 16,
+            color: _accent,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              ready
+                  ? 'AI가 메모를 읽는 중 · ${mainController.indexedNotes}/${mainController.indexTotal}'
+                  : '정확 검색만 사용 중 · AI 관련 검색 모델이 없습니다',
+              style: const TextStyle(fontSize: 11.5, color: Colors.black54),
+            ),
+          ),
+          if (!ready)
+            TextButton(
+              onPressed: () async {
+                await _hide();
+                await mainController.openModels();
+              },
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: const Text('모델 받기'),
+            ),
         ],
       ),
     );

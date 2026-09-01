@@ -1,9 +1,9 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 
 import 'embed/onnx_embedder.dart';
 import 'embed/unigram_tokenizer.dart';
+import 'model_manager.dart';
 import 'models/sticky.dart';
 import 'suggested_clusters.dart';
 
@@ -24,19 +24,41 @@ class Connection {
 
 /// 온디바이스 임베딩 기반 "관련 메모" 엔진. 메인 프로세스가 소유.
 /// - 벡터는 DB에 영속화(매 실행 재계산 안 함). 텍스트 hash 같으면 재사용.
-/// - 모델(118MB)은 lazy 로드: 바뀐 메모를 임베딩하거나 검색할 때만.
+/// - 선택한 모델은 lazy 로드: 바뀐 메모를 임베딩하거나 검색할 때만.
 class ConnectionEngine {
   OnnxEmbedder? _embedder;
   UnigramTokenizer? _tok;
+  InstalledModel? _model;
   bool _triedModel = false;
 
   final Map<String, List<double>> _vectors = {};
   final Map<String, String> _hashes = {};
 
   /// 임베딩 계산되면 영속화 콜백 (id, hash, vecJson). MainController 가 DB에 저장.
-  void Function(String id, String hash, String vec)? onPersist;
+  Future<void> Function(String id, String hash, String vec)? onPersist;
 
   bool get ready => _embedder != null;
+  String? get modelId => _model?.profile.id;
+
+  /// 설치/선택된 모델을 교체한다. 서로 다른 모델의 벡터는 비교할 수 없으므로
+  /// 메모리 캐시도 함께 비우고 다음 warmup에서 다시 만든다.
+  void selectModel(InstalledModel? model) {
+    if (_model?.profile.id == model?.profile.id &&
+        _model?.modelPath == model?.modelPath) {
+      return;
+    }
+    _embedder?.dispose();
+    _embedder = null;
+    _tok = null;
+    _model = model;
+    _triedModel = false;
+    clearEmbeddings();
+  }
+
+  void clearEmbeddings() {
+    _vectors.clear();
+    _hashes.clear();
+  }
 
   // 게이팅 (e5 점수가 좁게 뭉쳐서 절대 임계값 대신 상대 마진 병행). 실사용으로 튜닝.
   static const double _floor = 0.84;
@@ -89,37 +111,17 @@ class ConnectionEngine {
     if (_triedModel) return false;
     _triedModel = true;
     try {
-      final paths = _resolveModelPaths();
-      if (paths == null) return false;
-      _embedder = OnnxEmbedder()..init(paths.$1);
-      _tok = UnigramTokenizer()..load(paths.$2);
+      final model = _model;
+      if (model == null) return false;
+      _embedder = OnnxEmbedder()..init(model.modelPath);
+      _tok = UnigramTokenizer()..load(model.tokenizerPath);
       return true;
     } catch (_) {
+      _embedder?.dispose();
       _embedder = null;
       _tok = null;
       return false;
     }
-  }
-
-  /// 모델/토크나이저 경로 해석. (onnx경로, 토크나이저경로) 또는 둘 다 없으면 null.
-  /// 1) 앱 번들에 동봉된 모델(출시 경로) → flutter_assets/models/.
-  /// 2) 폴백: ~/Documents 에 직접 둔 모델(개발 중 / 사용자가 교체할 때).
-  (String, String)? _resolveModelPaths() {
-    // .app/Contents/MacOS/noteez → .app/Contents
-    final contents = File(Platform.resolvedExecutable).parent.parent.path;
-    final bundled =
-        '$contents/Frameworks/App.framework/Resources/flutter_assets/models';
-    if (File('$bundled/e5_int8.onnx').existsSync()) {
-      return ('$bundled/e5_int8.onnx', '$bundled/e5_tokenizer.json');
-    }
-    final home = Platform.environment['HOME'];
-    if (home != null && File('$home/Documents/e5_int8.onnx').existsSync()) {
-      return (
-        '$home/Documents/e5_int8.onnx',
-        '$home/Documents/e5_tokenizer.json',
-      );
-    }
-    return null;
   }
 
   /// 메모 임베딩 갱신. 텍스트 안 바뀌었으면(hash 동일) 스킵.
@@ -138,13 +140,22 @@ class ConnectionEngine {
     final vec = _embedder!.embedFromIds(ids, List<int>.filled(ids.length, 1));
     _vectors[s.id] = vec;
     _hashes[s.id] = h;
-    onPersist?.call(s.id, h, jsonEncode(vec));
+    await onPersist?.call(s.id, h, jsonEncode(vec));
   }
 
   /// 시작 시 백그라운드: 저장 안 됐거나 바뀐 메모만 임베딩(모델은 그때만 로드).
-  Future<void> warmup(List<Sticky> stickies) async {
+  Future<void> warmup(
+    List<Sticky> stickies, {
+    void Function(int completed, int total)? onProgress,
+  }) async {
+    final activeModel = modelId;
+    var completed = 0;
     for (final s in stickies) {
+      if (modelId != activeModel) return;
       await index(s);
+      if (modelId != activeModel) return;
+      completed++;
+      onProgress?.call(completed, stickies.length);
     }
   }
 

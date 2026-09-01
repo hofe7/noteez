@@ -42,4 +42,32 @@ void main() {
     expect(find.text('그 외'), findsOneWidget);
     expect(find.text('장보기'), findsOneWidget);
   });
+
+  testWidgets('overview explains missing AI model without hiding notes', (
+    tester,
+  ) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await tester.pumpWidget(
+      OverviewWindowApp(
+        notes: [
+          {
+            'id': 'a',
+            'label': '일반 검색 가능한 메모',
+            'color': 0,
+            'open': true,
+            'updatedAt': now,
+            'createdAt': now,
+          },
+        ],
+        edges: const [],
+        suggestedGroups: const [],
+        modelReady: false,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.textContaining('AI 모델을 받은 뒤'), findsOneWidget);
+    expect(find.text('모델 받기'), findsOneWidget);
+    expect(find.text('일반 검색 가능한 메모'), findsOneWidget);
+  });
 }
