@@ -81,6 +81,13 @@ class MarkdownExportResult {
   final int imageCount;
 }
 
+class NoteMarkdownGroup {
+  const NoteMarkdownGroup({required this.id, required this.name});
+
+  final String id;
+  final String name;
+}
+
 /// 네이티브 파일 선택기와 Markdown 변환을 묶은 이동성 계층.
 /// DB나 창을 모르므로 추후 Notion export/Obsidian vault 어댑터도 이 결과 타입으로
 /// MainController에 전달할 수 있다.
@@ -226,6 +233,7 @@ class MarkdownPortability {
   Future<MarkdownExportResult?> exportAll(
     List<Sticky> stickies, {
     Map<String, Set<String>> connections = const {},
+    Map<String, NoteMarkdownGroup> groupsBySticky = const {},
   }) async {
     final selected = await getDirectoryPath(
       confirmButtonText: '여기에 내보내기',
@@ -233,7 +241,12 @@ class MarkdownPortability {
     );
     if (selected == null) return null;
 
-    return exportToDirectory(stickies, selected, connections: connections);
+    return exportToDirectory(
+      stickies,
+      selected,
+      connections: connections,
+      groupsBySticky: groupsBySticky,
+    );
   }
 
   Future<MarkdownExportResult> exportToDirectory(
@@ -241,6 +254,7 @@ class MarkdownPortability {
     String selected, {
     DateTime? now,
     Map<String, Set<String>> connections = const {},
+    Map<String, NoteMarkdownGroup> groupsBySticky = const {},
   }) async {
     final exportRoot = await _uniqueDirectory(
       Directory(selected),
@@ -289,6 +303,8 @@ class MarkdownPortability {
           colorIndex: sticky.colorIndex,
           createdAt: sticky.createdAt,
           updatedAt: sticky.updatedAt,
+          noteezGroupId: groupsBySticky[sticky.id]?.id,
+          noteezGroupName: groupsBySticky[sticky.id]?.name,
         ),
         relatedNoteNames: (connections[sticky.id] ?? const <String>{})
             .map((id) => noteNames[id])

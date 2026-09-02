@@ -122,39 +122,55 @@ void main() {
     );
   });
 
-  test('Noteez export can be imported with IDs, content, and graph intact', () async {
-    final now = DateTime.utc(2026, 8, 27, 8);
-    Sticky note(String id, String title) => Sticky(
-      id: id,
-      blocks: [TextBlock(id: '$id-block', text: title)],
-      colorIndex: id == 'a' ? 2 : 4,
-      x: 0,
-      y: 0,
-      createdAt: now,
-      updatedAt: now,
-    );
-    final portability = MarkdownPortability();
-    final exported = await portability.exportToDirectory(
-      [note('a', 'Alpha'), note('b', 'Beta')],
-      temp.path,
-      now: now,
-      connections: const {
-        'a': {'b'},
-        'b': {'a'},
-      },
-    );
+  test(
+    'Noteez export can be imported with IDs, content, and graph intact',
+    () async {
+      final now = DateTime.utc(2026, 8, 27, 8);
+      Sticky note(String id, String title) => Sticky(
+        id: id,
+        blocks: [TextBlock(id: '$id-block', text: title)],
+        colorIndex: id == 'a' ? 2 : 4,
+        x: 0,
+        y: 0,
+        createdAt: now,
+        updatedAt: now,
+      );
+      final portability = MarkdownPortability();
+      final exported = await portability.exportToDirectory(
+        [note('a', 'Alpha'), note('b', 'Beta')],
+        temp.path,
+        now: now,
+        connections: const {
+          'a': {'b'},
+          'b': {'a'},
+        },
+        groupsBySticky: const {
+          'a': NoteMarkdownGroup(id: 'group-1', name: '출시 준비'),
+          'b': NoteMarkdownGroup(id: 'group-1', name: '출시 준비'),
+        },
+      );
 
-    final imported = await portability.importFolderPath(
-      exported.directoryPath,
-    );
+      final imported = await portability.importFolderPath(
+        exported.directoryPath,
+      );
 
-    expect(imported.notes.map((n) => n.metadata.noteezId).toSet(), {'a', 'b'});
-    expect(imported.notes.map((n) => n.blocks.first.text).toSet(), {
-      'Alpha',
-      'Beta',
-    });
-    expect(imported.links, hasLength(1));
-  });
+      expect(imported.notes.map((n) => n.metadata.noteezId).toSet(), {
+        'a',
+        'b',
+      });
+      expect(imported.notes.map((n) => n.blocks.first.text).toSet(), {
+        'Alpha',
+        'Beta',
+      });
+      expect(imported.links, hasLength(1));
+      expect(imported.notes.map((n) => n.metadata.noteezGroupId).toSet(), {
+        'group-1',
+      });
+      expect(imported.notes.map((n) => n.metadata.noteezGroupName).toSet(), {
+        '출시 준비',
+      });
+    },
+  );
 
   test(
     'Notion ZIP import extracts Markdown and uses stable source keys',

@@ -42,6 +42,8 @@ class MainController extends ChangeNotifier {
   /// 승인된 연결(지식 그래프). 인접/묶음 알고리즘은 LinkGraph 가 담당.
   final LinkGraph _graph = LinkGraph();
   final MarkdownPortability _markdown = MarkdownPortability();
+  final List<NoteGroupRow> _noteGroups = [];
+  final Map<String, GroupMemberRow> _groupMembers = {};
 
   /// 현재 콘텐츠 버전에 대해 사용자가 숨긴 추천 pair.
   final Map<String, ({String aId, String bId, String aHash, String bHash})>
@@ -83,6 +85,7 @@ class MainController extends ChangeNotifier {
     } else {
       stickies.addAll(loaded);
     }
+    await _reloadNoteGroups();
 
     // 연결(엣지) 로드 → 창 뜨자마자 "🔗 연결" 표시.
     for (final l in await _db.allActiveLinks()) {
@@ -176,6 +179,13 @@ class MainController extends ChangeNotifier {
     return null;
   }
 
+  NoteGroupRow? _noteGroupOf(String id) {
+    for (final group in _noteGroups) {
+      if (group.id == id) return group;
+    }
+    return null;
+  }
+
   bool _isSuggestionDismissed(String a, String b) {
     final d = _dismissals[_pairKey(a, b)];
     if (d == null) return false;
@@ -205,6 +215,64 @@ class MainController extends ChangeNotifier {
     for (final id in ids.skip(1)) {
       await _linkPair(anchor, id);
     }
+    _pushOverview();
+  }
+
+  Future<void> _reloadNoteGroups() async {
+    _noteGroups
+      ..clear()
+      ..addAll(await _db.allActiveGroups());
+    _groupMembers
+      ..clear()
+      ..addEntries(
+        (await _db.allGroupMembers()).map((m) => MapEntry(m.stickyId, m)),
+      );
+    final liveGroupIds = _noteGroups.map((g) => g.id).toSet();
+    _groupMembers.removeWhere(
+      (stickyId, member) =>
+          !liveGroupIds.contains(member.groupId) || _stickyOf(stickyId) == null,
+    );
+  }
+
+  String _cleanGroupName(String value) {
+    final name = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (name.isEmpty) return '새 묶음';
+    return name.length > 80 ? name.substring(0, 80).trimRight() : name;
+  }
+
+  Future<String> _createNoteGroup(
+    String name,
+    Iterable<String> ids, {
+    String? requestedId,
+  }) async {
+    final id = requestedId?.trim().isNotEmpty == true
+        ? requestedId!.trim()
+        : _uuid.v4();
+    final position = _noteGroups.isEmpty
+        ? 0
+        : _noteGroups.map((g) => g.position).reduce((a, b) => a > b ? a : b) +
+              1;
+    await _db.upsertNoteGroup(
+      id: id,
+      name: _cleanGroupName(name),
+      position: position,
+    );
+    await _db.assignNotesToGroup(
+      id,
+      ids.where((noteId) => _stickyOf(noteId) != null),
+    );
+    await _reloadNoteGroups();
+    _pushOverview();
+    return id;
+  }
+
+  Future<void> _assignNotesToGroup(String groupId, Iterable<String> ids) async {
+    if (!_noteGroups.any((g) => g.id == groupId)) return;
+    await _db.assignNotesToGroup(
+      groupId,
+      ids.where((noteId) => _stickyOf(noteId) != null),
+    );
+    await _reloadNoteGroups();
     _pushOverview();
   }
 
@@ -279,6 +347,8 @@ class MainController extends ChangeNotifier {
         await _db.softDeleteLinksFor(id);
         await _db.deleteSuggestionDismissalsFor(id);
         await _db.deleteImportOriginsFor(id);
+        await _db.deleteGroupMembershipForNote(id);
+        _groupMembers.remove(id);
         _dismissals.removeWhere((_, d) => d.aId == id || d.bId == id);
         notifyListeners();
         _pushOverview();
@@ -308,6 +378,44 @@ class MainController extends ChangeNotifier {
         final ids = (jsonDecode(call.arguments as String) as List)
             .cast<String>();
         await _linkIds(ids);
+      case ToMain.createNoteGroup:
+        final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
+        await _createNoteGroup(
+          m['name'] as String? ?? '',
+          ((m['ids'] as List?) ?? const []).cast<String>(),
+        );
+      case ToMain.renameNoteGroup:
+        final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
+        await _db.renameNoteGroup(
+          m['id'] as String,
+          _cleanGroupName(m['name'] as String? ?? ''),
+        );
+        await _reloadNoteGroups();
+        _pushOverview();
+      case ToMain.deleteNoteGroup:
+        await _db.softDeleteNoteGroup(call.arguments as String);
+        await _reloadNoteGroups();
+        _pushOverview();
+      case ToMain.assignNotesToGroup:
+        final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
+        await _assignNotesToGroup(
+          m['groupId'] as String,
+          ((m['ids'] as List?) ?? const []).cast<String>(),
+        );
+      case ToMain.removeNotesFromGroup:
+        final ids = (jsonDecode(call.arguments as String) as List)
+            .cast<String>();
+        await _db.removeNotesFromGroup(ids);
+        await _reloadNoteGroups();
+        _pushOverview();
+      case ToMain.setNoteGroupCollapsed:
+        final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
+        await _db.setNoteGroupCollapsed(
+          m['id'] as String,
+          m['collapsed'] as bool? ?? false,
+        );
+        await _reloadNoteGroups();
+        _pushOverview();
       case ToMain.unlinkStickies:
         final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
         await _unlinkPair(m['a'] as String, m['b'] as String);
@@ -510,6 +618,7 @@ class MainController extends ChangeNotifier {
   _storeMarkdownImports(MarkdownImportBatch batch) async {
     final changed = <Sticky>[];
     final bySourcePath = <String, String>{};
+    final importedGroups = <String, ({String? groupId, String? groupName})>{};
     var imported = 0;
     var updated = 0;
     var skipped = 0;
@@ -572,6 +681,13 @@ class MainController extends ChangeNotifier {
         }
       }
       bySourcePath[note.sourcePath] = sticky.id;
+      if (note.metadata.noteezGroupId != null ||
+          note.metadata.noteezGroupName != null) {
+        importedGroups[sticky.id] = (
+          groupId: note.metadata.noteezGroupId,
+          groupName: note.metadata.noteezGroupName,
+        );
+      }
       if (updateOrigin) {
         await _db.upsertImportOrigin(
           sourceKey: note.sourceKey,
@@ -608,7 +724,40 @@ class MainController extends ChangeNotifier {
       }
     }
 
-    if (changed.isNotEmpty || linked > 0) {
+    var groupsChanged = false;
+    final restoredGroupIds = <String, String>{};
+    for (final entry in importedGroups.entries) {
+      final metadata = entry.value;
+      final sourceKey = metadata.groupId?.trim().isNotEmpty == true
+          ? 'id:${metadata.groupId!.trim()}'
+          : 'name:${(metadata.groupName ?? '').trim().toLowerCase()}';
+      var groupId = restoredGroupIds[sourceKey];
+      if (groupId == null) {
+        final requestedId = metadata.groupId?.trim();
+        NoteGroupRow? existing;
+        for (final group in _noteGroups) {
+          if ((requestedId?.isNotEmpty == true && group.id == requestedId) ||
+              (requestedId?.isNotEmpty != true &&
+                  group.name.toLowerCase() ==
+                      (metadata.groupName ?? '').trim().toLowerCase())) {
+            existing = group;
+            break;
+          }
+        }
+        groupId = existing?.id;
+        groupId ??= await _createNoteGroup(
+          metadata.groupName ?? '가져온 묶음',
+          const [],
+          requestedId: requestedId,
+        );
+        restoredGroupIds[sourceKey] = groupId;
+      }
+      await _db.assignNotesToGroup(groupId, [entry.key]);
+      groupsChanged = true;
+    }
+    if (groupsChanged) await _reloadNoteGroups();
+
+    if (changed.isNotEmpty || linked > 0 || groupsChanged) {
       notifyListeners();
       _pushOverview();
       unawaited(_conn.warmup(changed).then((_) => _pushOverview()));
@@ -672,6 +821,11 @@ class MainController extends ChangeNotifier {
     connections: {
       for (final sticky in stickies)
         sticky.id: Set<String>.of(_graph.neighbors(sticky.id)),
+    },
+    groupsBySticky: {
+      for (final member in _groupMembers.values)
+        if (_noteGroupOf(member.groupId) case final group?)
+          member.stickyId: NoteMarkdownGroup(id: group.id, name: group.name),
     },
   );
 
@@ -792,9 +946,33 @@ class MainController extends ChangeNotifier {
     final edges = [
       for (final e in _graph.uniqueEdges()) {'a': e.a, 'b': e.b},
     ];
+    final memberships = <String, List<GroupMemberRow>>{};
+    for (final member in _groupMembers.values) {
+      (memberships[member.groupId] ??= []).add(member);
+    }
+    for (final members in memberships.values) {
+      members.sort((a, b) => a.position.compareTo(b.position));
+    }
+    final groups = [
+      for (final group in _noteGroups)
+        {
+          'id': group.id,
+          'name': group.name,
+          'position': group.position,
+          'collapsed': group.collapsed,
+          'memberIds': [
+            for (final member
+                in memberships[group.id] ?? const <GroupMemberRow>[])
+              member.stickyId,
+          ],
+        },
+    ];
     // 사용자가 확정한 묶음은 추천에서 제외한다. 추천은 표현용 계산 결과일 뿐
     // DB/LinkGraph를 바꾸지 않으며 다음 임베딩 갱신 때 다시 계산된다.
-    final confirmedIds = _graph.clusters().expand((c) => c).toSet();
+    final confirmedIds = {
+      ..._graph.clusters().expand((c) => c),
+      ..._groupMembers.keys,
+    };
     final suggestedGroups = [
       for (final c in _conn.suggestedClusters(
         stickies,
@@ -806,6 +984,7 @@ class MainController extends ChangeNotifier {
     return {
       'notes': notes,
       'edges': edges,
+      'groups': groups,
       'suggestedGroups': suggestedGroups,
       'modelReady': hasSelectedModel,
       'modelIndexed': _indexedNotes,
