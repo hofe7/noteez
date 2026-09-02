@@ -62,7 +62,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   double? _lastWindowH;
   double? _expandedH; // 펴진 상태의 마지막 높이(접었다 펼 때 복원)
   List<Map<String, dynamic>> _links = const []; // 승인된 연결
-  Map<String, dynamic>? _suggestion; // 제안(미승인) {id, preview, full, score}
+  Map<String, dynamic>? _suggestion; // 제안 {id, preview, full, score, reasons}
   bool _sugExpanded = false; // 제안 펼쳐서 전체 내용 보기
   bool _linksExpanded = false; // 연결 목록 펼치기 (기본은 "연결 N"으로 접음)
   bool _hovering = false;
@@ -698,15 +698,30 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
               color: Colors.black.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Text(
-              (s['full'] as String?)?.isNotEmpty == true
-                  ? s['full'] as String
-                  : s['preview'] as String,
-              style: const TextStyle(
-                fontSize: 13,
-                color: Colors.black54,
-                height: 1.35,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (((s['reasons'] as List?) ?? const []).isNotEmpty) ...[
+                  Text(
+                    ((s['reasons'] as List).cast<String>()).join(' · '),
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      color: Colors.black38,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                ],
+                Text(
+                  (s['full'] as String?)?.isNotEmpty == true
+                      ? s['full'] as String
+                      : s['preview'] as String,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.black54,
+                    height: 1.35,
+                  ),
+                ),
+              ],
             ),
           ),
       ],

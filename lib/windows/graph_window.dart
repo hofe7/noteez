@@ -21,6 +21,7 @@ class OverviewWindowApp extends StatelessWidget {
   final bool modelReady;
   final int modelIndexed;
   final int modelIndexTotal;
+  final String? fontFamily;
   const OverviewWindowApp({
     super.key,
     required this.notes,
@@ -31,6 +32,7 @@ class OverviewWindowApp extends StatelessWidget {
     this.modelReady = true,
     this.modelIndexed = 0,
     this.modelIndexTotal = 0,
+    this.fontFamily,
   });
 
   @override
@@ -38,7 +40,7 @@ class OverviewWindowApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: '전체 보기',
-      theme: noteezTheme(),
+      theme: noteezTheme(fontFamily: fontFamily),
       home: OverviewWindow(
         notes: notes,
         edges: edges,
@@ -179,13 +181,29 @@ class _OverviewWindowState extends State<OverviewWindow> {
     return (clusters: clusters, grouped: grouped);
   }
 
-  // 임베딩 엔진이 계산한 읽기 전용 추천 묶음. 삭제된 id와 확정 묶음 id는
+  // 하이브리드 엔진이 계산한 읽기 전용 추천 묶음. 삭제된 id와 확정 묶음 id는
   // 방어적으로 한 번 더 제거한다.
-  ({List<List<Map<String, dynamic>>> clusters, Set<String> grouped}) _suggested(
-    Set<String> confirmed,
-  ) {
+  ({
+    List<
+      ({
+        List<Map<String, dynamic>> members,
+        List<String> reasons,
+        String? title,
+      })
+    >
+    clusters,
+    Set<String> grouped,
+  })
+  _suggested(Set<String> confirmed) {
     final byId = {for (final n in _notes) n['id'] as String: n};
-    final clusters = <List<Map<String, dynamic>>>[];
+    final clusters =
+        <
+          ({
+            List<Map<String, dynamic>> members,
+            List<String> reasons,
+            String? title,
+          })
+        >[];
     final grouped = <String>{};
     for (final raw in _suggestedGroups) {
       final ids = (raw['ids'] as List).cast<String>();
@@ -195,7 +213,11 @@ class _OverviewWindowState extends State<OverviewWindow> {
       ].whereType<Map<String, dynamic>>().toList();
       if (members.length < 2) continue;
       grouped.addAll(members.map((m) => m['id'] as String));
-      clusters.add(members);
+      clusters.add((
+        members: members,
+        reasons: ((raw['reasons'] as List?) ?? const []).cast<String>(),
+        title: raw['title'] as String?,
+      ));
     }
     return (clusters: clusters, grouped: grouped);
   }
@@ -233,11 +255,12 @@ class _OverviewWindowState extends State<OverviewWindow> {
     ];
     final visibleSuggested = [
       for (final c in suggested.clusters)
-        if (c.where(_matches).toList() case final m when m.isNotEmpty)
+        if (c.members.where(_matches).toList() case final m when m.isNotEmpty)
           (
-            title: c.first['label'] as String,
+            title: c.title ?? c.members.first['label'] as String,
             members: m..sort(_cmp),
-            ids: c.map((n) => n['id'] as String).toList(),
+            ids: c.members.map((n) => n['id'] as String).toList(),
+            reasons: c.reasons,
           ),
     ];
     final ungrouped =
@@ -294,6 +317,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
                             suggested: true,
                             suggestedTitle: c.title,
                             actionIds: c.ids,
+                            reasons: c.reasons,
                           ),
                           const SizedBox(height: 14),
                         ],
@@ -356,7 +380,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
           child: Text(
             _modelReady
                 ? '관련 메모를 다시 읽는 중 · $_modelIndexed/$_modelIndexTotal'
-                : '관련 메모 추천은 AI 모델을 받은 뒤 시작됩니다.',
+                : '키워드·작성 시점으로 추천 중 · AI 모델을 받으면 의미까지 비교해요.',
             style: const TextStyle(fontSize: 12.5, color: AppColors.ink2),
           ),
         ),
@@ -582,7 +606,12 @@ class _OverviewWindowState extends State<OverviewWindow> {
     if (uniqueIds.length < 2) return;
     final name = await _askGroupName(title: '새 묶음 만들기', initial: initialName);
     if (name == null) return;
-    await _main.createNoteGroup(name, uniqueIds);
+    final groupId = await _main.createNoteGroup(name, uniqueIds);
+    if (groupId != null && mounted) {
+      _offerUndo('‘$name’ 묶음을 만들었어요.', () async {
+        await _main.deleteNoteGroup(groupId);
+      });
+    }
     if (mounted) {
       setState(() {
         _selectionMode = false;
@@ -592,12 +621,15 @@ class _OverviewWindowState extends State<OverviewWindow> {
   }
 
   Future<void> _renameGroup(Map<String, dynamic> group) async {
-    final name = await _askGroupName(
-      title: '묶음 이름 바꾸기',
-      initial: group['name'] as String,
-    );
+    final oldName = group['name'] as String;
+    final name = await _askGroupName(title: '묶음 이름 바꾸기', initial: oldName);
     if (name != null) {
       await _main.renameNoteGroup(group['id'] as String, name);
+      if (mounted) {
+        _offerUndo('묶음 이름을 ‘$name’(으)로 바꿨어요.', () async {
+          await _main.renameNoteGroup(group['id'] as String, oldName);
+        });
+      }
     }
   }
 
@@ -620,7 +652,81 @@ class _OverviewWindowState extends State<OverviewWindow> {
       ),
     );
     if (confirmed == true) {
-      await _main.deleteNoteGroup(group['id'] as String);
+      final id = group['id'] as String;
+      final name = group['name'] as String;
+      final members = ((group['memberIds'] as List?) ?? const [])
+          .cast<String>();
+      final collapsed = group['collapsed'] == true;
+      final position = group['position'] as int?;
+      await _main.deleteNoteGroup(id);
+      if (mounted) {
+        _offerUndo('‘$name’ 묶음을 삭제했어요. 메모는 그대로예요.', () async {
+          await _main.createNoteGroup(
+            name,
+            members,
+            requestedId: id,
+            collapsed: collapsed,
+            position: position,
+          );
+        });
+      }
+    }
+  }
+
+  String? _groupContaining(String noteId) {
+    for (final group in _groups) {
+      final ids = ((group['memberIds'] as List?) ?? const []).cast<String>();
+      if (ids.contains(noteId)) return group['id'] as String;
+    }
+    return null;
+  }
+
+  String _groupName(String groupId) {
+    for (final group in _groups) {
+      if (group['id'] == groupId) return group['name'] as String;
+    }
+    return '묶음';
+  }
+
+  void _offerUndo(String message, Future<void> Function() undo) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: '실행 취소',
+          onPressed: () {
+            undo();
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _moveNote(String noteId, String groupId) async {
+    final previous = _groupContaining(noteId);
+    if (previous == groupId) return;
+    await _main.assignNotesToGroup(groupId, [noteId]);
+    if (!mounted) return;
+    _offerUndo('‘${_groupName(groupId)}’ 묶음으로 옮겼어요.', () async {
+      if (previous == null) {
+        await _main.removeNotesFromGroup([noteId]);
+      } else {
+        await _main.assignNotesToGroup(previous, [noteId]);
+      }
+    });
+  }
+
+  Future<void> _removeNoteFromGroup(String noteId) async {
+    final previous = _groupContaining(noteId);
+    if (previous == null) return;
+    await _main.removeNotesFromGroup([noteId]);
+    if (mounted) {
+      _offerUndo('메모를 묶음에서 뺐어요.', () async {
+        await _main.assignNotesToGroup(previous, [noteId]);
+      });
     }
   }
 
@@ -633,8 +739,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
     return DragTarget<String>(
       onWillAcceptWithDetails: (details) =>
           !((group['memberIds'] as List).cast<String>().contains(details.data)),
-      onAcceptWithDetails: (details) =>
-          _main.assignNotesToGroup(id, [details.data]),
+      onAcceptWithDetails: (details) => _moveNote(details.data, id),
       builder: (context, candidates, _) => AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         decoration: BoxDecoration(
@@ -732,6 +837,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
     bool suggested = false,
     String? suggestedTitle,
     List<String> actionIds = const [],
+    List<String> reasons = const [],
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -803,6 +909,14 @@ class _OverviewWindowState extends State<OverviewWindow> {
               ],
             ),
           ),
+          if (suggested && reasons.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 9),
+              child: Text(
+                reasons.join(' · '),
+                style: const TextStyle(fontSize: 11.5, color: AppColors.ink3),
+              ),
+            ),
           const Divider(height: 1, color: Color(0x0D000000)),
           for (final m in members) _noteRow(m),
         ],
@@ -823,10 +937,50 @@ class _OverviewWindowState extends State<OverviewWindow> {
         ),
       );
 
+  Widget _moveMenu(String noteId) {
+    final current = _groupContaining(noteId);
+    return PopupMenuButton<String>(
+      tooltip: '묶음으로 이동',
+      icon: const Icon(
+        Icons.drive_file_move_outline,
+        size: 16,
+        color: Colors.black38,
+      ),
+      onSelected: (value) {
+        if (value == '__none__') {
+          _removeNoteFromGroup(noteId);
+        } else {
+          _moveNote(noteId, value);
+        }
+      },
+      itemBuilder: (_) => [
+        for (final group in _groups)
+          PopupMenuItem(
+            value: group['id'] as String,
+            child: Row(
+              children: [
+                Icon(
+                  current == group['id']
+                      ? Icons.check_rounded
+                      : Icons.folder_outlined,
+                  size: 16,
+                  color: current == group['id'] ? _accent : AppColors.ink3,
+                ),
+                const SizedBox(width: 8),
+                Flexible(child: Text(group['name'] as String)),
+              ],
+            ),
+          ),
+        if (current != null) const PopupMenuDivider(),
+        if (current != null)
+          const PopupMenuItem(value: '__none__', child: Text('묶음에서 빼기')),
+      ],
+    );
+  }
+
   Widget _ungroupedSection(List<Map<String, dynamic>> notes) {
     return DragTarget<String>(
-      onAcceptWithDetails: (details) =>
-          _main.removeNotesFromGroup([details.data]),
+      onAcceptWithDetails: (details) => _removeNoteFromGroup(details.data),
       builder: (context, candidates, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -976,6 +1130,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
               ),
             ),
             const SizedBox(width: 8),
+            if (!_selectionMode && _groups.isNotEmpty) _moveMenu(id),
             if (!_selectionMode) _rowAction(id, closed),
           ],
         ),

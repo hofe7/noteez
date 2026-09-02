@@ -244,18 +244,25 @@ class MainController extends ChangeNotifier {
     String name,
     Iterable<String> ids, {
     String? requestedId,
+    bool collapsed = false,
+    int? requestedPosition,
   }) async {
     final id = requestedId?.trim().isNotEmpty == true
         ? requestedId!.trim()
         : _uuid.v4();
-    final position = _noteGroups.isEmpty
-        ? 0
-        : _noteGroups.map((g) => g.position).reduce((a, b) => a > b ? a : b) +
-              1;
+    final position =
+        requestedPosition ??
+        (_noteGroups.isEmpty
+            ? 0
+            : _noteGroups
+                      .map((g) => g.position)
+                      .reduce((a, b) => a > b ? a : b) +
+                  1);
     await _db.upsertNoteGroup(
       id: id,
       name: _cleanGroupName(name),
       position: position,
+      collapsed: collapsed,
     );
     await _db.assignNotesToGroup(
       id,
@@ -357,6 +364,13 @@ class MainController extends ChangeNotifier {
       case ToMain.getConnection:
         final sid = call.arguments as String;
         final linked = _graph.neighbors(sid);
+        final currentGroupId = _groupMembers[sid]?.groupId;
+        final excluded = {
+          ...linked,
+          if (currentGroupId != null)
+            for (final member in _groupMembers.values)
+              if (member.groupId == currentGroupId) member.stickyId,
+        };
         final linkList = <Map<String, dynamic>>[];
         for (final lid in linked) {
           final p = _previewOf(lid);
@@ -365,7 +379,7 @@ class MainController extends ChangeNotifier {
         final sug = _conn.connectionFor(
           sid,
           stickies,
-          exclude: linked,
+          exclude: excluded,
           isDismissed: _isSuggestionDismissed,
         );
         return jsonEncode({'links': linkList, 'suggestion': sug?.toJson()});
@@ -380,9 +394,12 @@ class MainController extends ChangeNotifier {
         await _linkIds(ids);
       case ToMain.createNoteGroup:
         final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
-        await _createNoteGroup(
+        return _createNoteGroup(
           m['name'] as String? ?? '',
           ((m['ids'] as List?) ?? const []).cast<String>(),
+          requestedId: m['id'] as String?,
+          collapsed: m['collapsed'] as bool? ?? false,
+          requestedPosition: m['position'] as int?,
         );
       case ToMain.renameNoteGroup:
         final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
@@ -979,7 +996,12 @@ class MainController extends ChangeNotifier {
         exclude: confirmedIds,
         isDismissed: _isSuggestionDismissed,
       ))
-        {'ids': c.ids, 'score': c.score},
+        {
+          'ids': c.ids,
+          'score': c.score,
+          'reasons': c.reasons,
+          if (c.title != null) 'title': c.title,
+        },
     ];
     return {
       'notes': notes,

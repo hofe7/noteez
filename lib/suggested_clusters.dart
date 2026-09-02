@@ -1,10 +1,17 @@
 /// 아직 사용자가 확정하지 않은 의미 기반 추천 묶음.
 /// ids 첫 번째는 그룹의 대표 메모(medoid)다.
 class SuggestedCluster {
-  const SuggestedCluster(this.ids, this.score);
+  const SuggestedCluster(
+    this.ids,
+    this.score, {
+    this.reasons = const [],
+    this.title,
+  });
 
   final List<String> ids;
   final double score; // 그룹 내부 모든 쌍의 평균 유사도
+  final List<String> reasons;
+  final String? title;
 }
 
 typedef PairSimilarity = double Function(String a, String b);
