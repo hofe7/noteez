@@ -52,6 +52,7 @@ void main() {
         case '/community/multilingual-e5-noteez/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/onnx/config.json':
           response = {
             'hidden_size': 384,
+            'max_position_embeddings': 512,
             'tokenizer_class': 'XLMRobertaTokenizer',
           };
         default:

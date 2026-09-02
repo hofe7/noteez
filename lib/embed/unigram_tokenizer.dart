@@ -8,6 +8,7 @@ import 'dart:io';
 /// 주의: 원본 normalizer 의 Precompiled charsmap(NFKC류)은 생략.
 /// 일반 한/영 입력엔 영향이 거의 없으며 fixture 로 정합성을 검증한다.
 class UnigramTokenizer {
+  static const int defaultMaxTokens = 512;
   static const int bos = 0; // <s>
   static const int eos = 2; // </s>
   static const int unk = 3; // <unk>
@@ -19,8 +20,9 @@ class UnigramTokenizer {
   late final double _unkScore;
 
   void load(String tokenizerJsonPath) {
-    final j = jsonDecode(File(tokenizerJsonPath).readAsStringSync())
-        as Map<String, dynamic>;
+    final j =
+        jsonDecode(File(tokenizerJsonPath).readAsStringSync())
+            as Map<String, dynamic>;
     final vocab = (j['model'] as Map<String, dynamic>)['vocab'] as List;
     _scores = List<double>.filled(vocab.length, 0);
     _pieceId = HashMap<String, int>();
@@ -41,7 +43,13 @@ class UnigramTokenizer {
   }
 
   /// 텍스트 → 토큰 id 시퀀스 (<s> ... </s> 포함).
-  List<int> encode(String text) {
+  ///
+  /// multilingual-e5의 position embedding 한도에 맞춰 기본 512토큰으로
+  /// 자른다. 마지막 토큰은 항상 </s>로 보존한다.
+  List<int> encode(String text, {int maxTokens = defaultMaxTokens}) {
+    if (maxTokens < 2) {
+      throw ArgumentError.value(maxTokens, 'maxTokens', '2 이상이어야 합니다.');
+    }
     final norm = _meta + text.replaceAll(' ', _meta);
     final cps = norm.runes.toList();
     final n = cps.length;
@@ -80,6 +88,8 @@ class UnigramTokenizer {
       mid.add(backId[pos]);
       pos = backStart[pos];
     }
-    return [bos, ...mid.reversed, eos];
+    final pieces = mid.reversed.toList(growable: false);
+    if (pieces.length + 2 <= maxTokens) return [bos, ...pieces, eos];
+    return [bos, ...pieces.take(maxTokens - 2), eos];
   }
 }

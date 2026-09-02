@@ -134,12 +134,20 @@ class HuggingFaceModelSearch {
     }
     modelConfig ??= detailRaw['config'] as Map<String, dynamic>?;
     final dimensions = (modelConfig?['hidden_size'] as num?)?.toInt();
+    final maxPositions = (modelConfig?['max_position_embeddings'] as num?)
+        ?.toInt();
     final tokenizerClass = modelConfig?['tokenizer_class'] as String?;
     final modelType = modelConfig?['model_type'] as String?;
     final architectures =
         (modelConfig?['architectures'] as List?)?.whereType<String>().toSet() ??
         const <String>{};
-    if (dimensions == null || dimensions < 1 || dimensions > 1024) return null;
+    if (dimensions == null ||
+        dimensions < 1 ||
+        dimensions > 1024 ||
+        maxPositions == null ||
+        maxPositions < 512) {
+      return null;
+    }
     final xlmTokenizer =
         tokenizerClass == 'XLMRobertaTokenizer' ||
         tokenizerClass == 'XLMRobertaTokenizerFast';
