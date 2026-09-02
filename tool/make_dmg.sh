@@ -45,11 +45,13 @@ Noteez 설치 / 처음 여는 법
 
 1. Noteez 를 Applications 폴더로 드래그하세요.
 
-2. 처음 실행할 때 (둘 중 하나):
-   • Applications 에서 Noteez 우클릭 → "열기" → 다시 "열기"
-   • 또는 시스템 설정 → 개인정보 보호 및 보안 → "확인 없이 열기"
-   • 또는 터미널:
+2. 처음 실행할 때 "완료 / 휴지통에 버리기"만 보이면 "완료"를 누르세요.
+   이어서 시스템 설정 → 개인정보 보호 및 보안 → 보안 영역의
+   "확인 없이 열기"를 누르고, 인증 후 다시 "열기"를 누르세요.
+
+   "확인 없이 열기"가 안 보일 때의 터미널 대안:
        xattr -dr com.apple.quarantine /Applications/Noteez.app
+       open /Applications/Noteez.app
 
    (아직 Apple 공증을 받지 않아 처음 한 번만 필요합니다.)
 

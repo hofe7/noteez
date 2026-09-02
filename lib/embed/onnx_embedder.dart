@@ -25,6 +25,12 @@ class OnnxEmbedder {
 
   /// 토큰 id → 384차원 정규화 임베딩 (mean pooling + L2 normalize, e5 방식).
   List<double> embedFromIds(List<int> ids, List<int> mask) {
+    if (ids.isEmpty || ids.length != mask.length) {
+      throw ArgumentError('토큰과 attention mask 길이가 올바르지 않습니다.');
+    }
+    if (ids.length > 512) {
+      throw ArgumentError('multilingual-e5 입력은 512토큰을 넘을 수 없습니다.');
+    }
     final s = _session!;
     final n = ids.length;
     final idT = OrtValueTensor.createTensorWithDataList(
@@ -43,44 +49,49 @@ class OnnxEmbedder {
       'attention_mask': mT,
       if (s.inputNames.contains('token_type_ids')) 'token_type_ids': ttT,
     };
-    final outs = s.run(ro, inputs, s.outputNames);
+    List<OrtValue?>? outs;
+    try {
+      outs = s.run(ro, inputs, s.outputNames);
 
-    final value = (outs[0] as OrtValueTensor).value as List; // [1][seq][dim]
-    final seq = value[0] as List;
-    final dim = (seq[0] as List).length;
+      final value = (outs[0] as OrtValueTensor).value as List; // [1][seq][dim]
+      final seq = value[0] as List;
+      final dim = (seq[0] as List).length;
 
-    final pooled = List<double>.filled(dim, 0.0);
-    var cnt = 0;
-    for (var t = 0; t < seq.length; t++) {
-      if (t < mask.length && mask[t] == 0) continue;
-      cnt++;
-      final row = seq[t] as List;
+      final pooled = List<double>.filled(dim, 0.0);
+      var cnt = 0;
+      for (var t = 0; t < seq.length; t++) {
+        if (t < mask.length && mask[t] == 0) continue;
+        cnt++;
+        final row = seq[t] as List;
+        for (var d = 0; d < dim; d++) {
+          pooled[d] += (row[d] as num).toDouble();
+        }
+      }
+      if (cnt == 0) cnt = 1;
       for (var d = 0; d < dim; d++) {
-        pooled[d] += (row[d] as num).toDouble();
+        pooled[d] /= cnt;
+      }
+      var norm = 0.0;
+      for (final x in pooled) {
+        norm += x * x;
+      }
+      norm = sqrt(norm);
+      if (norm > 0) {
+        for (var d = 0; d < dim; d++) {
+          pooled[d] /= norm;
+        }
+      }
+      return pooled;
+    } finally {
+      idT.release();
+      mT.release();
+      ttT.release();
+      ro.release();
+      if (outs != null) {
+        for (final output in outs) {
+          output?.release();
+        }
       }
     }
-    if (cnt == 0) cnt = 1;
-    for (var d = 0; d < dim; d++) {
-      pooled[d] /= cnt;
-    }
-    var norm = 0.0;
-    for (final x in pooled) {
-      norm += x * x;
-    }
-    norm = sqrt(norm);
-    if (norm > 0) {
-      for (var d = 0; d < dim; d++) {
-        pooled[d] /= norm;
-      }
-    }
-
-    idT.release();
-    mT.release();
-    ttT.release();
-    ro.release();
-    for (final o in outs) {
-      o?.release();
-    }
-    return pooled;
   }
 }
