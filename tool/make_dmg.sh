@@ -21,6 +21,15 @@ if [[ ! -d "$APP_SRC" ]]; then
   echo "build output not found: $APP_SRC" >&2; exit 1
 fi
 
+# Flutter's local release build can leave App.framework changed after the outer
+# app received its ad-hoc signature. Re-sign the complete bundle so a copied app
+# still passes macOS's structural code-signature validation. This is not Apple
+# notarization and does not remove the first-launch Gatekeeper warning.
+echo "==> ad-hoc signing and verification"
+codesign --force --deep --sign - \
+  --entitlements macos/Runner/Release.entitlements "$APP_SRC"
+codesign --verify --deep --strict "$APP_SRC"
+
 echo "==> staging"
 rm -rf "$DIST" && mkdir -p "$DIST"
 STAGE="$(mktemp -d)"
