@@ -36,7 +36,7 @@ const kCardShadow = <BoxShadow>[
 
 /// 일반 창(리포트·전체 보기)용 테마. Material 기본 크롬(보라 리플·M3 시드색)을
 /// 끄고 허니 앰버 + 따뜻한 배경으로 통일.
-ThemeData noteezTheme() {
+ThemeData noteezTheme({String? fontFamily}) {
   final scheme = ColorScheme.fromSeed(
     seedColor: AppColors.accent,
     primary: AppColors.accent,
@@ -44,6 +44,7 @@ ThemeData noteezTheme() {
   );
   return ThemeData(
     useMaterial3: true,
+    fontFamily: fontFamily,
     colorScheme: scheme,
     scaffoldBackgroundColor: AppColors.bg,
     dividerColor: AppColors.hair,

@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'embed/onnx_embedder.dart';
 import 'embed/unigram_tokenizer.dart';
+import 'hybrid_relevance.dart';
 import 'model_manager.dart';
 import 'models/sticky.dart';
 import 'suggested_clusters.dart';
@@ -12,17 +13,25 @@ class Connection {
   final String preview; // 첫 줄
   final String full; // 전체 내용(연결 전 판단용)
   final double score;
-  const Connection(this.id, this.preview, this.full, this.score);
+  final List<String> reasons;
+  const Connection(
+    this.id,
+    this.preview,
+    this.full,
+    this.score, {
+    this.reasons = const [],
+  });
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'preview': preview,
     'full': full,
     'score': score,
+    'reasons': reasons,
   };
 }
 
-/// 온디바이스 임베딩 기반 "관련 메모" 엔진. 메인 프로세스가 소유.
+/// 키워드·시점·메모 성격과 온디바이스 임베딩을 합친 "관련 메모" 엔진.
 /// - 벡터는 DB에 영속화(매 실행 재계산 안 함). 텍스트 hash 같으면 재사용.
 /// - 선택한 모델은 lazy 로드: 바뀐 메모를 임베딩하거나 검색할 때만.
 class ConnectionEngine {
@@ -59,11 +68,6 @@ class ConnectionEngine {
     _vectors.clear();
     _hashes.clear();
   }
-
-  // 게이팅 (e5 점수가 좁게 뭉쳐서 절대 임계값 대신 상대 마진 병행). 실사용으로 튜닝.
-  static const double _floor = 0.84;
-  static const double _margin = 0.012;
-  static const double _strong = 0.90;
 
   /// DB에 저장된 임베딩을 메모리에 로드 (모델 불필요).
   void seed(String id, String hash, List<double> vec) {
@@ -179,54 +183,72 @@ class ConnectionEngine {
     return out;
   }
 
-  /// id 메모의 최고 관련 메모 1개 (게이팅 통과 시). 저장된 벡터만 사용(모델 불필요).
-  /// exclude: 이미 승인-연결된 메모(중복 제안 방지).
+  /// id 메모의 최고 관련 메모 1개. 임베딩이 있으면 의미 점수를 더하고, 없어도
+  /// 공통 키워드·메모 성격·작성 시점으로 후보를 찾는다.
   Connection? connectionFor(
     String id,
     List<Sticky> all, {
     Set<String> exclude = const {},
     bool Function(String a, String b)? isDismissed,
   }) {
-    final v = _vectors[id];
-    if (v == null) return null;
+    Sticky? source;
+    for (final sticky in all) {
+      if (sticky.id == id) {
+        source = sticky;
+        break;
+      }
+    }
+    if (source == null) return null;
 
-    String? bestId;
+    Sticky? bestSticky;
+    HybridRelevanceResult? bestResult;
     var best = -2.0;
     var second = -2.0;
-    for (final e in _vectors.entries) {
-      if (e.key == id ||
-          exclude.contains(e.key) ||
-          (isDismissed?.call(id, e.key) ?? false)) {
+    for (final candidate in all) {
+      if (candidate.id == id ||
+          exclude.contains(candidate.id) ||
+          (isDismissed?.call(id, candidate.id) ?? false)) {
         continue;
       }
-      final c = _cos(v, e.value);
-      if (c > best) {
+      final sourceVector = _vectors[id];
+      final candidateVector = _vectors[candidate.id];
+      final result = HybridRelevance.evaluate(
+        source,
+        candidate,
+        semanticScore: sourceVector != null && candidateVector != null
+            ? _cos(sourceVector, candidateVector)
+            : null,
+      );
+      if (result.score > best) {
         second = best;
-        best = c;
-        bestId = e.key;
-      } else if (c > second) {
-        second = c;
+        best = result.score;
+        bestSticky = candidate;
+        bestResult = result;
+      } else if (result.score > second) {
+        second = result.score;
       }
     }
-    if (bestId == null) return null;
+    if (bestSticky == null || bestResult == null) return null;
 
     final pass =
-        best >= _floor && (best - second >= _margin || best >= _strong);
+        best >= HybridRelevance.suggestionThreshold &&
+        (best - second >= 0.04 || best >= HybridRelevance.strongThreshold);
     if (!pass) return null;
 
-    for (final s in all) {
-      if (s.id == bestId) {
-        final full = s.blocks
-            .map((b) => b.text.trim())
-            .where((t) => t.isNotEmpty)
-            .join('\n');
-        return Connection(bestId, s.preview, full, best);
-      }
-    }
-    return null;
+    final full = bestSticky.blocks
+        .map((b) => b.text.trim())
+        .where((t) => t.isNotEmpty)
+        .join('\n');
+    return Connection(
+      bestSticky.id,
+      bestSticky.preview,
+      full,
+      best,
+      reasons: bestResult.reasons,
+    );
   }
 
-  /// 확정 연결에 속하지 않은 메모를 작은 의미 묶음으로 제안한다.
+  /// 확정 연결에 속하지 않은 메모를 작은 하이브리드 묶음으로 제안한다.
   /// 너무 짧은 메모는 일반 표현끼리 과하게 묶이는 것을 막기 위해 제외한다.
   List<SuggestedCluster> suggestedClusters(
     List<Sticky> all, {
@@ -235,19 +257,82 @@ class ConnectionEngine {
   }) {
     final ids = <String>[
       for (final s in all)
-        if (!exclude.contains(s.id) &&
-            _vectors.containsKey(s.id) &&
-            _text(s).length >= 6)
-          s.id,
+        if (!exclude.contains(s.id) && _text(s).length >= 6) s.id,
     ];
-    return SuggestedClusterEngine.build(
+    final byId = {for (final sticky in all) sticky.id: sticky};
+    final pairResults = <String, HybridRelevanceResult>{};
+    String key(String a, String b) => a.compareTo(b) < 0 ? '$a|$b' : '$b|$a';
+    HybridRelevanceResult relevance(String a, String b) {
+      return pairResults.putIfAbsent(key(a, b), () {
+        final av = _vectors[a];
+        final bv = _vectors[b];
+        return HybridRelevance.evaluate(
+          byId[a]!,
+          byId[b]!,
+          semanticScore: av != null && bv != null ? _cos(av, bv) : null,
+        );
+      });
+    }
+
+    final clusters = SuggestedClusterEngine.build(
       ids,
-      (a, b) => (isDismissed?.call(a, b) ?? false)
-          ? -2.0
-          : _cos(_vectors[a]!, _vectors[b]!),
-      pairThreshold: _floor,
-      minimumCrossScore: _floor - 0.04,
+      (a, b) =>
+          (isDismissed?.call(a, b) ?? false) ? -2.0 : relevance(a, b).score,
+      pairThreshold: HybridRelevance.suggestionThreshold,
+      minimumCrossScore: 0.50,
     );
+    return [
+      for (final cluster in clusters)
+        SuggestedCluster(
+          cluster.ids,
+          cluster.score,
+          reasons: _clusterReasons(cluster.ids, relevance),
+          title: _clusterTitle(cluster.ids, relevance),
+        ),
+    ];
+  }
+
+  List<String> _clusterReasons(
+    List<String> ids,
+    HybridRelevanceResult Function(String a, String b) relevance,
+  ) {
+    final counts = <String, int>{};
+    for (var i = 0; i < ids.length; i++) {
+      for (var j = i + 1; j < ids.length; j++) {
+        for (final reason in relevance(ids[i], ids[j]).reasons) {
+          counts[reason] = (counts[reason] ?? 0) + 1;
+        }
+      }
+    }
+    final ordered = counts.entries.toList()
+      ..sort((a, b) {
+        final byCount = b.value.compareTo(a.value);
+        return byCount != 0 ? byCount : a.key.compareTo(b.key);
+      });
+    return ordered.take(2).map((entry) => entry.key).toList();
+  }
+
+  String? _clusterTitle(
+    List<String> ids,
+    HybridRelevanceResult Function(String a, String b) relevance,
+  ) {
+    final counts = <String, int>{};
+    for (var i = 0; i < ids.length; i++) {
+      for (var j = i + 1; j < ids.length; j++) {
+        for (final keyword in relevance(ids[i], ids[j]).sharedKeywords) {
+          counts[keyword] = (counts[keyword] ?? 0) + 1;
+        }
+      }
+    }
+    final ordered = counts.entries.toList()
+      ..sort((a, b) {
+        final byCount = b.value.compareTo(a.value);
+        if (byCount != 0) return byCount;
+        final byLength = b.key.length.compareTo(a.key.length);
+        return byLength != 0 ? byLength : a.key.compareTo(b.key);
+      });
+    if (ordered.isEmpty) return null;
+    return ordered.take(2).map((entry) => entry.key).join(' · ');
   }
 
   static double _cos(List<double> a, List<double> b) {

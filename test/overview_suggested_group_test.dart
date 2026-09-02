@@ -66,7 +66,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.textContaining('AI 모델을 받은 뒤'), findsOneWidget);
+    expect(find.textContaining('키워드·작성 시점'), findsOneWidget);
     expect(find.text('모델 받기'), findsOneWidget);
     expect(find.text('일반 검색 가능한 메모'), findsOneWidget);
   });

@@ -100,11 +100,24 @@ class MainChannel {
   Future<void> linkGroup(List<String> ids) =>
       _ch.invokeMethod(ToMain.linkGroup, jsonEncode(ids));
 
-  Future<void> createNoteGroup(String name, List<String> ids) =>
-      _ch.invokeMethod(
-        ToMain.createNoteGroup,
-        jsonEncode({'name': name, 'ids': ids}),
-      );
+  Future<String?> createNoteGroup(
+    String name,
+    List<String> ids, {
+    String? requestedId,
+    bool collapsed = false,
+    int? position,
+  }) async =>
+      await _ch.invokeMethod(
+            ToMain.createNoteGroup,
+            jsonEncode({
+              'name': name,
+              'ids': ids,
+              'id': requestedId,
+              'collapsed': collapsed,
+              'position': position,
+            }),
+          )
+          as String?;
 
   Future<void> renameNoteGroup(String id, String name) => _ch.invokeMethod(
     ToMain.renameNoteGroup,
