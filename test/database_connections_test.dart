@@ -105,4 +105,39 @@ void main() {
       expect((await db.allActive()).single.id, sticky.id);
     },
   );
+
+  test(
+    'manual group owns a note once and deleting it keeps the note',
+    () async {
+      final now = DateTime(2026, 9, 2);
+      final sticky = Sticky(
+        id: 'note',
+        blocks: [const TextBlock(id: 'block', text: 'Keep me')],
+        colorIndex: 0,
+        x: 0,
+        y: 0,
+        createdAt: now,
+        updatedAt: now,
+      );
+      await db.upsert(sticky);
+      await db.upsertNoteGroup(id: 'a', name: '첫 묶음', position: 0);
+      await db.upsertNoteGroup(id: 'b', name: '둘째 묶음', position: 1);
+
+      await db.assignNotesToGroup('a', ['note']);
+      await db.assignNotesToGroup('b', ['note']);
+
+      final membership = (await db.allGroupMembers()).single;
+      expect(membership.groupId, 'b');
+
+      await db.renameNoteGroup('b', '새 이름');
+      await db.setNoteGroupCollapsed('b', true);
+      final group = (await db.allActiveGroups()).last;
+      expect(group.name, '새 이름');
+      expect(group.collapsed, isTrue);
+
+      await db.softDeleteNoteGroup('b');
+      expect(await db.allGroupMembers(), isEmpty);
+      expect((await db.allActive()).single.id, 'note');
+    },
+  );
 }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../models/sticky.dart';
 
 typedef ImportedImageResolver = Future<String?> Function(String reference);
@@ -15,12 +17,16 @@ class NoteMarkdownMetadata {
     this.colorIndex,
     this.createdAt,
     this.updatedAt,
+    this.noteezGroupId,
+    this.noteezGroupName,
   });
 
   final String? noteezId;
   final int? colorIndex;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final String? noteezGroupId;
+  final String? noteezGroupName;
 }
 
 class DecodedNoteMarkdown {
@@ -153,6 +159,8 @@ class NoteMarkdownCodec {
         colorIndex: int.tryParse(frontMatter['noteez-color'] ?? ''),
         createdAt: date('noteez-created-at'),
         updatedAt: date('noteez-updated-at'),
+        noteezGroupId: frontMatter['noteez-group-id'],
+        noteezGroupName: frontMatter['noteez-group'],
       ),
     );
   }
@@ -173,6 +181,10 @@ class NoteMarkdownCodec {
           'noteez-created-at: ${metadata.createdAt!.toIso8601String()}',
         if (metadata.updatedAt != null)
           'noteez-updated-at: ${metadata.updatedAt!.toIso8601String()}',
+        if (metadata.noteezGroupId != null)
+          'noteez-group-id: ${_yamlString(metadata.noteezGroupId!)}',
+        if (metadata.noteezGroupName != null)
+          'noteez-group: ${_yamlString(metadata.noteezGroupName!)}',
         '---',
       ]);
     }
@@ -229,6 +241,14 @@ class NoteMarkdownCodec {
   }
 
   String _unquote(String value) {
+    if (value.startsWith('"') && value.endsWith('"')) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is String) return decoded;
+      } catch (_) {
+        // 손으로 쓴 느슨한 YAML 문자열은 아래 단순 처리로 복구한다.
+      }
+    }
     if (value.length >= 2 &&
         ((value.startsWith('"') && value.endsWith('"')) ||
             (value.startsWith("'") && value.endsWith("'")))) {
@@ -236,6 +256,8 @@ class NoteMarkdownCodec {
     }
     return value;
   }
+
+  String _yamlString(String value) => jsonEncode(value);
 
   String _plain(String value) {
     var text = value;

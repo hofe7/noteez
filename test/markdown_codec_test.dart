@@ -102,6 +102,8 @@ source: notion
         colorIndex: 3,
         createdAt: created,
         updatedAt: created,
+        noteezGroupId: 'group-id',
+        noteezGroupName: '업무: "출시"',
       ),
       relatedNoteNames: ['Beta', 'Gamma'],
     );
@@ -110,6 +112,8 @@ source: notion
     expect(decoded.metadata.noteezId, 'note-id');
     expect(decoded.metadata.colorIndex, 3);
     expect(decoded.metadata.createdAt, created);
+    expect(decoded.metadata.noteezGroupId, 'group-id');
+    expect(decoded.metadata.noteezGroupName, '업무: "출시"');
     expect(decoded.blocks.map((b) => b.text), ['Alpha']);
     expect(decoded.references.map((r) => r.target), ['Beta', 'Gamma']);
   });

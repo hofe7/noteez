@@ -16,6 +16,7 @@ class OverviewWindowApp extends StatelessWidget {
   notes; // {id,label,color,open,updatedAt,createdAt}
   final List<Map<String, dynamic>> edges; // {a,b}
   final List<Map<String, dynamic>> suggestedGroups; // {ids:[...],score}
+  final List<Map<String, dynamic>> groups; // {id,name,collapsed,memberIds}
   final String? notice;
   final bool modelReady;
   final int modelIndexed;
@@ -25,6 +26,7 @@ class OverviewWindowApp extends StatelessWidget {
     required this.notes,
     required this.edges,
     required this.suggestedGroups,
+    this.groups = const [],
     this.notice,
     this.modelReady = true,
     this.modelIndexed = 0,
@@ -41,6 +43,7 @@ class OverviewWindowApp extends StatelessWidget {
         notes: notes,
         edges: edges,
         suggestedGroups: suggestedGroups,
+        groups: groups,
         notice: notice,
         modelReady: modelReady,
         modelIndexed: modelIndexed,
@@ -58,6 +61,7 @@ class OverviewWindow extends StatefulWidget {
   final List<Map<String, dynamic>> notes;
   final List<Map<String, dynamic>> edges;
   final List<Map<String, dynamic>> suggestedGroups;
+  final List<Map<String, dynamic>> groups;
   final String? notice;
   final bool modelReady;
   final int modelIndexed;
@@ -67,6 +71,7 @@ class OverviewWindow extends StatefulWidget {
     required this.notes,
     required this.edges,
     required this.suggestedGroups,
+    this.groups = const [],
     this.notice,
     this.modelReady = true,
     this.modelIndexed = 0,
@@ -90,10 +95,13 @@ class _OverviewWindowState extends State<OverviewWindow> {
   late List<Map<String, dynamic>> _notes = widget.notes;
   late List<Map<String, dynamic>> _edges = widget.edges;
   late List<Map<String, dynamic>> _suggestedGroups = widget.suggestedGroups;
+  late List<Map<String, dynamic>> _groups = widget.groups;
   late String? _notice = widget.notice;
   late bool _modelReady = widget.modelReady;
   late int _modelIndexed = widget.modelIndexed;
   late int _modelIndexTotal = widget.modelIndexTotal;
+  bool _selectionMode = false;
+  final Set<String> _selectedIds = {};
 
   @override
   void initState() {
@@ -107,6 +115,8 @@ class _OverviewWindowState extends State<OverviewWindow> {
             _notes = (m['notes'] as List).cast<Map<String, dynamic>>();
             _edges = (m['edges'] as List).cast<Map<String, dynamic>>();
             _suggestedGroups = ((m['suggestedGroups'] as List?) ?? const [])
+                .cast<Map<String, dynamic>>();
+            _groups = ((m['groups'] as List?) ?? const [])
                 .cast<Map<String, dynamic>>();
             if (m['notice'] is String) _notice = m['notice'] as String;
             _modelReady = m['modelReady'] as bool? ?? _modelReady;
@@ -142,12 +152,16 @@ class _OverviewWindowState extends State<OverviewWindow> {
 
   // 묶음(연결요소) + 묶인 id 집합. 그래프 알고리즘은 LinkGraph(순수, 단위테스트됨)
   // 재사용 — 별 isolate라 edges 만 받지만 LinkGraph 는 의존성이 없어 그대로 쓴다.
-  ({List<List<Map<String, dynamic>>> clusters, Set<String> grouped})
-  _grouped() {
+  ({List<List<Map<String, dynamic>>> clusters, Set<String> grouped}) _grouped(
+    Set<String> manuallyGrouped,
+  ) {
     final byId = {for (final n in _notes) n['id'] as String: n};
     final graph = LinkGraph();
     for (final e in _edges) {
-      graph.addEdge(e['a'] as String, e['b'] as String);
+      final a = e['a'] as String;
+      final b = e['b'] as String;
+      if (manuallyGrouped.contains(a) || manuallyGrouped.contains(b)) continue;
+      graph.addEdge(a, b);
     }
     final clusters = <List<Map<String, dynamic>>>[];
     final grouped = <String>{};
@@ -188,8 +202,29 @@ class _OverviewWindowState extends State<OverviewWindow> {
 
   @override
   Widget build(BuildContext context) {
-    final g = _grouped();
-    final suggested = _suggested(g.grouped);
+    final byId = {for (final note in _notes) note['id'] as String: note};
+    final manualIds = <String>{
+      for (final group in _groups)
+        ...((group['memberIds'] as List?) ?? const []).cast<String>(),
+    };
+    final visibleManual =
+        <({Map<String, dynamic> group, List<Map<String, dynamic>> members})>[];
+    for (final group in _groups) {
+      final allMembers = [
+        for (final id
+            in ((group['memberIds'] as List?) ?? const []).cast<String>())
+          byId[id],
+      ].whereType<Map<String, dynamic>>().toList();
+      final members = allMembers.where(_matches).toList()..sort(_cmp);
+      if (members.isNotEmpty ||
+          (allMembers.isEmpty &&
+              _filter.trim().isEmpty &&
+              _status == _Status.all)) {
+        visibleManual.add((group: group, members: members));
+      }
+    }
+    final g = _grouped(manualIds);
+    final suggested = _suggested({...manualIds, ...g.grouped});
     // 필터/정렬 적용.
     final visibleClusters = [
       for (final c in g.clusters)
@@ -210,34 +245,45 @@ class _OverviewWindowState extends State<OverviewWindow> {
             .where(
               (n) =>
                   !g.grouped.contains(n['id']) &&
+                  !manualIds.contains(n['id']) &&
                   !suggested.grouped.contains(n['id']) &&
                   _matches(n),
             )
             .toList()
           ..sort(_cmp);
     final shown =
+        visibleManual.fold<int>(0, (s, g) => s + g.members.length) +
         visibleClusters.fold<int>(0, (s, c) => s + c.length) +
         visibleSuggested.fold<int>(0, (s, c) => s + c.members.length) +
         ungrouped.length;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
+      bottomNavigationBar: _selectionMode ? _selectionBar() : null,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _header(g.clusters.length, suggested.clusters.length),
+            _header(
+              _groups.length,
+              g.clusters.length,
+              suggested.clusters.length,
+            ),
             _controls(),
             if (!_modelReady || _modelIndexed < _modelIndexTotal)
               _modelBanner(),
             if (_notice != null) _noticeBanner(),
             const Divider(height: 1, color: AppColors.hair),
             Expanded(
-              child: (shown == 0)
+              child: (shown == 0 && visibleManual.isEmpty)
                   ? _empty()
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                       children: [
+                        for (final entry in visibleManual) ...[
+                          _manualGroupCard(entry.group, entry.members),
+                          const SizedBox(height: 14),
+                        ],
                         for (final c in visibleClusters) ...[
                           _clusterCard(c),
                           const SizedBox(height: 14),
@@ -251,7 +297,8 @@ class _OverviewWindowState extends State<OverviewWindow> {
                           ),
                           const SizedBox(height: 14),
                         ],
-                        if (ungrouped.isNotEmpty) _ungroupedSection(ungrouped),
+                        if (ungrouped.isNotEmpty || manualIds.isNotEmpty)
+                          _ungroupedSection(ungrouped),
                       ],
                     ),
             ),
@@ -319,7 +366,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
     ),
   );
 
-  Widget _header(int clusterCount, int suggestionCount) {
+  Widget _header(int manualCount, int clusterCount, int suggestionCount) {
     final total = _notes.length;
     final drawer = _notes.where((n) => n['open'] != true).length;
     return Padding(
@@ -327,18 +374,37 @@ class _OverviewWindowState extends State<OverviewWindow> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '전체 보기',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.4,
-              color: AppColors.ink,
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '전체 보기',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.4,
+                    color: AppColors.ink,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () => setState(() {
+                  _selectionMode = !_selectionMode;
+                  if (!_selectionMode) _selectedIds.clear();
+                }),
+                icon: Icon(
+                  _selectionMode
+                      ? Icons.close_rounded
+                      : Icons.checklist_rounded,
+                  size: 16,
+                ),
+                label: Text(_selectionMode ? '취소' : '선택'),
+              ),
+            ],
           ),
           const SizedBox(height: 3),
           Text(
-            '메모 $total개 · 묶음 $clusterCount개 · 추천 $suggestionCount개 · 서랍 $drawer개',
+            '메모 $total개 · 내 묶음 $manualCount개 · 연결 묶음 $clusterCount개 · 추천 $suggestionCount개 · 서랍 $drawer개',
             style: const TextStyle(fontSize: 12.5, color: AppColors.ink3),
           ),
         ],
@@ -471,6 +537,196 @@ class _OverviewWindowState extends State<OverviewWindow> {
     );
   }
 
+  Future<String?> _askGroupName({
+    required String title,
+    String initial = '',
+  }) async {
+    final controller = TextEditingController(text: initial);
+    controller.selection = TextSelection.collapsed(offset: initial.length);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 80,
+          decoration: const InputDecoration(
+            labelText: '묶음 이름',
+            hintText: '예: 이번 분기 준비',
+          ),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    final name = result?.trim();
+    return name == null || name.isEmpty ? null : name;
+  }
+
+  Future<void> _createGroupFromIds(
+    Iterable<String> ids, {
+    String initialName = '',
+  }) async {
+    final uniqueIds = ids.toSet().toList();
+    if (uniqueIds.length < 2) return;
+    final name = await _askGroupName(title: '새 묶음 만들기', initial: initialName);
+    if (name == null) return;
+    await _main.createNoteGroup(name, uniqueIds);
+    if (mounted) {
+      setState(() {
+        _selectionMode = false;
+        _selectedIds.clear();
+      });
+    }
+  }
+
+  Future<void> _renameGroup(Map<String, dynamic> group) async {
+    final name = await _askGroupName(
+      title: '묶음 이름 바꾸기',
+      initial: group['name'] as String,
+    );
+    if (name != null) {
+      await _main.renameNoteGroup(group['id'] as String, name);
+    }
+  }
+
+  Future<void> _deleteGroup(Map<String, dynamic> group) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('묶음을 삭제할까요?'),
+        content: const Text('메모는 삭제되지 않고 ‘그 외’로 돌아갑니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('묶음 삭제'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _main.deleteNoteGroup(group['id'] as String);
+    }
+  }
+
+  Widget _manualGroupCard(
+    Map<String, dynamic> group,
+    List<Map<String, dynamic>> members,
+  ) {
+    final id = group['id'] as String;
+    final collapsed = group['collapsed'] == true;
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) =>
+          !((group['memberIds'] as List).cast<String>().contains(details.data)),
+      onAcceptWithDetails: (details) =>
+          _main.assignNotesToGroup(id, [details.data]),
+      builder: (context, candidates, _) => AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        decoration: BoxDecoration(
+          color: candidates.isEmpty
+              ? AppColors.surface
+              : AppColors.accentTint(0.11),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: candidates.isEmpty ? AppColors.border : _accent,
+          ),
+          boxShadow: kCardShadow,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InkWell(
+              onTap: () => _main.setNoteGroupCollapsed(id, !collapsed),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 8, 9),
+                child: Row(
+                  children: [
+                    Icon(
+                      collapsed
+                          ? Icons.chevron_right_rounded
+                          : Icons.expand_more_rounded,
+                      size: 18,
+                      color: AppColors.ink3,
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        group['name'] as String,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                    _countBadge(members.length),
+                    PopupMenuButton<String>(
+                      tooltip: '묶음 메뉴',
+                      icon: const Icon(Icons.more_horiz_rounded, size: 18),
+                      onSelected: (value) {
+                        if (value == 'rename') _renameGroup(group);
+                        if (value == 'delete') _deleteGroup(group);
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'rename', child: Text('이름 바꾸기')),
+                        PopupMenuItem(value: 'delete', child: Text('묶음 삭제')),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (!collapsed) ...[
+              const Divider(height: 1, color: Color(0x0D000000)),
+              for (final member in members) _noteRow(member),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _selectionBar() => SafeArea(
+    top: false,
+    child: Container(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.hair)),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: Text('${_selectedIds.length}개 선택')),
+          FilledButton.icon(
+            onPressed: _selectedIds.length < 2
+                ? null
+                : () => _createGroupFromIds(_selectedIds),
+            icon: const Icon(Icons.create_new_folder_outlined, size: 17),
+            label: const Text('묶음 만들기'),
+          ),
+        ],
+      ),
+    ),
+  );
+
   Widget _clusterCard(
     List<Map<String, dynamic>> members, {
     bool suggested = false,
@@ -506,7 +762,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
                   child: Text(
                     suggested
                         ? '${suggestedTitle ?? members.first['label']} 관련'
-                        : members.first['label'] as String,
+                        : '연결 · ${members.first['label']}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -530,7 +786,11 @@ class _OverviewWindowState extends State<OverviewWindow> {
                   _clusterAction(
                     Icons.done_all_rounded,
                     '묶음으로 확정',
-                    () => _main.linkGroup(actionIds),
+                    () => _createGroupFromIds(
+                      actionIds,
+                      initialName:
+                          '${suggestedTitle ?? members.first['label']} 관련',
+                    ),
                   ),
                   _clusterAction(
                     Icons.close_rounded,
@@ -564,29 +824,37 @@ class _OverviewWindowState extends State<OverviewWindow> {
       );
 
   Widget _ungroupedSection(List<Map<String, dynamic>> notes) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(6, 6, 6, 6),
-          child: Text(
-            '그 외',
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: Colors.black45,
-              letterSpacing: -0.2,
+    return DragTarget<String>(
+      onAcceptWithDetails: (details) =>
+          _main.removeNotesFromGroup([details.data]),
+      builder: (context, candidates, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
+            child: Text(
+              candidates.isEmpty ? '그 외' : '여기에 놓아 묶음에서 빼기',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: candidates.isEmpty ? Colors.black45 : _accent,
+                letterSpacing: -0.2,
+              ),
             ),
           ),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            color: const Color(0x05000000),
-            borderRadius: BorderRadius.circular(14),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            decoration: BoxDecoration(
+              color: candidates.isEmpty
+                  ? const Color(0x05000000)
+                  : AppColors.accentTint(0.09),
+              borderRadius: BorderRadius.circular(14),
+              border: candidates.isEmpty ? null : Border.all(color: _accent),
+            ),
+            child: Column(children: [for (final m in notes) _noteRow(m)]),
           ),
-          child: Column(children: [for (final m in notes) _noteRow(m)]),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -595,12 +863,58 @@ class _OverviewWindowState extends State<OverviewWindow> {
   Widget _noteRow(Map<String, dynamic> m) {
     final closed = m['open'] != true;
     final id = m['id'] as String;
+    final selected = _selectedIds.contains(id);
     return InkWell(
-      onTap: () => _open(id),
+      onTap: () => _selectionMode
+          ? setState(() {
+              selected ? _selectedIds.remove(id) : _selectedIds.add(id);
+            })
+          : _open(id),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         child: Row(
           children: [
+            if (_selectionMode) ...[
+              Checkbox(
+                value: selected,
+                visualDensity: VisualDensity.compact,
+                onChanged: (_) => setState(() {
+                  selected ? _selectedIds.remove(id) : _selectedIds.add(id);
+                }),
+              ),
+              const SizedBox(width: 3),
+            ] else ...[
+              Draggable<String>(
+                data: id,
+                feedback: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: kCardShadow,
+                    ),
+                    child: Text(
+                      m['label'] as String,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ),
+                child: const Tooltip(
+                  message: '묶음으로 드래그',
+                  child: Icon(
+                    Icons.drag_indicator_rounded,
+                    size: 16,
+                    color: Colors.black26,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 7),
+            ],
             Opacity(
               opacity: closed ? 0.5 : 1.0,
               child: Container(
@@ -662,7 +976,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
               ),
             ),
             const SizedBox(width: 8),
-            _rowAction(id, closed),
+            if (!_selectionMode) _rowAction(id, closed),
           ],
         ),
       ),

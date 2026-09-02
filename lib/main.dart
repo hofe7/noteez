@@ -90,6 +90,8 @@ Future<void> main(List<String> args) async {
     final edges = (m['edges'] as List).cast<Map<String, dynamic>>();
     final suggestedGroups = ((m['suggestedGroups'] as List?) ?? const [])
         .cast<Map<String, dynamic>>();
+    final groups = ((m['groups'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>();
     final notice = m['notice'] as String?;
     final modelReady = m['modelReady'] as bool? ?? true;
     final modelIndexed = m['modelIndexed'] as int? ?? 0;
@@ -106,6 +108,7 @@ Future<void> main(List<String> args) async {
         notes: notes,
         edges: edges,
         suggestedGroups: suggestedGroups,
+        groups: groups,
         notice: notice,
         modelReady: modelReady,
         modelIndexed: modelIndexed,

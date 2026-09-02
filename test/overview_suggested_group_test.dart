@@ -70,4 +70,55 @@ void main() {
     expect(find.text('모델 받기'), findsOneWidget);
     expect(find.text('일반 검색 가능한 메모'), findsOneWidget);
   });
+
+  testWidgets('manual groups take precedence over inferred groups', (
+    tester,
+  ) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    Map<String, dynamic> note(String id, String label) => {
+      'id': id,
+      'label': label,
+      'color': 0,
+      'open': true,
+      'updatedAt': now,
+      'createdAt': now,
+    };
+
+    await tester.pumpWidget(
+      OverviewWindowApp(
+        notes: [note('a', 'Alpha'), note('b', 'Beta'), note('c', 'Other')],
+        edges: const [
+          {'a': 'a', 'b': 'b'},
+        ],
+        suggestedGroups: const [
+          {
+            'ids': ['a', 'b'],
+            'score': 0.9,
+          },
+        ],
+        groups: const [
+          {
+            'id': 'group',
+            'name': '출시 준비',
+            'position': 0,
+            'collapsed': false,
+            'memberIds': ['a', 'b'],
+          },
+        ],
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('출시 준비'), findsOneWidget);
+    expect(find.text('Alpha'), findsOneWidget);
+    expect(find.text('Beta'), findsOneWidget);
+    expect(find.text('Alpha 관련'), findsNothing);
+    expect(find.text('연결 · Alpha'), findsNothing);
+    expect(find.text('Other'), findsOneWidget);
+
+    await tester.tap(find.text('선택'));
+    await tester.pump();
+    expect(find.byType(Checkbox), findsNWidgets(3));
+    expect(find.text('묶음 만들기'), findsOneWidget);
+  });
 }

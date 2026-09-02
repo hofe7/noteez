@@ -17,6 +17,12 @@ abstract final class ToMain {
   static const String getConnection = 'getConnection';
   static const String linkStickies = 'linkStickies';
   static const String linkGroup = 'linkGroup';
+  static const String createNoteGroup = 'createNoteGroup';
+  static const String renameNoteGroup = 'renameNoteGroup';
+  static const String deleteNoteGroup = 'deleteNoteGroup';
+  static const String assignNotesToGroup = 'assignNotesToGroup';
+  static const String removeNotesFromGroup = 'removeNotesFromGroup';
+  static const String setNoteGroupCollapsed = 'setNoteGroupCollapsed';
   static const String unlinkStickies = 'unlinkStickies';
   static const String dismissSuggestions = 'dismissSuggestions';
   static const String closeSticky = 'closeSticky';
@@ -93,6 +99,35 @@ class MainChannel {
 
   Future<void> linkGroup(List<String> ids) =>
       _ch.invokeMethod(ToMain.linkGroup, jsonEncode(ids));
+
+  Future<void> createNoteGroup(String name, List<String> ids) =>
+      _ch.invokeMethod(
+        ToMain.createNoteGroup,
+        jsonEncode({'name': name, 'ids': ids}),
+      );
+
+  Future<void> renameNoteGroup(String id, String name) => _ch.invokeMethod(
+    ToMain.renameNoteGroup,
+    jsonEncode({'id': id, 'name': name}),
+  );
+
+  Future<void> deleteNoteGroup(String id) =>
+      _ch.invokeMethod(ToMain.deleteNoteGroup, id);
+
+  Future<void> assignNotesToGroup(String groupId, List<String> ids) =>
+      _ch.invokeMethod(
+        ToMain.assignNotesToGroup,
+        jsonEncode({'groupId': groupId, 'ids': ids}),
+      );
+
+  Future<void> removeNotesFromGroup(List<String> ids) =>
+      _ch.invokeMethod(ToMain.removeNotesFromGroup, jsonEncode(ids));
+
+  Future<void> setNoteGroupCollapsed(String id, bool collapsed) =>
+      _ch.invokeMethod(
+        ToMain.setNoteGroupCollapsed,
+        jsonEncode({'id': id, 'collapsed': collapsed}),
+      );
 
   Future<void> unlinkStickies(String a, String b) =>
       _ch.invokeMethod(ToMain.unlinkStickies, jsonEncode({'a': a, 'b': b}));

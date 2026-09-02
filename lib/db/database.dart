@@ -85,15 +85,52 @@ class ImportOrigins extends Table {
   Set<Column> get primaryKey => {sourceKey};
 }
 
+/// 사용자가 직접 이름 붙여 정리하는 메모 묶음. 연결 그래프와는 별개이며,
+/// 묶음을 지워도 메모 자체는 유지한다.
+@DataClassName('NoteGroupRow')
+class NoteGroups extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  IntColumn get position => integer()();
+  BoolColumn get collapsed => boolean().withDefault(const Constant(false))();
+  IntColumn get createdAt => integer()();
+  IntColumn get updatedAt => integer()();
+  IntColumn get deletedAt => integer().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// 첫 버전은 메모 하나가 하나의 수동 묶음에만 속하도록 한다. stickyId를 PK로
+/// 두어 이 제약을 저장소 수준에서도 보장한다.
+@DataClassName('GroupMemberRow')
+class GroupMembers extends Table {
+  TextColumn get stickyId => text()();
+  TextColumn get groupId => text()();
+  IntColumn get position => integer()();
+  IntColumn get addedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {stickyId};
+}
+
 @DriftDatabase(
-  tables: [Stickies, Links, Embeddings, SuggestionDismissals, ImportOrigins],
+  tables: [
+    Stickies,
+    Links,
+    Embeddings,
+    SuggestionDismissals,
+    ImportOrigins,
+    NoteGroups,
+    GroupMembers,
+  ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'noteez'));
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -106,8 +143,109 @@ class AppDatabase extends _$AppDatabase {
       if (from < 7) await m.createTable(suggestionDismissals);
       if (from < 8) await m.createTable(importOrigins);
       if (from < 9) await m.addColumn(embeddings, embeddings.modelId);
+      if (from < 10) {
+        await m.createTable(noteGroups);
+        await m.createTable(groupMembers);
+      }
     },
   );
+
+  Future<List<NoteGroupRow>> allActiveGroups() =>
+      (select(noteGroups)
+            ..where((t) => t.deletedAt.isNull())
+            ..orderBy([
+              (t) => OrderingTerm.asc(t.position),
+              (t) => OrderingTerm.asc(t.createdAt),
+            ]))
+          .get();
+
+  Future<List<GroupMemberRow>> allGroupMembers() =>
+      (select(groupMembers)..orderBy([
+            (t) => OrderingTerm.asc(t.groupId),
+            (t) => OrderingTerm.asc(t.position),
+          ]))
+          .get();
+
+  Future<void> upsertNoteGroup({
+    required String id,
+    required String name,
+    required int position,
+    bool collapsed = false,
+    int? createdAt,
+  }) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return into(noteGroups).insertOnConflictUpdate(
+      NoteGroupsCompanion.insert(
+        id: id,
+        name: name,
+        position: position,
+        collapsed: Value(collapsed),
+        createdAt: createdAt ?? now,
+        updatedAt: now,
+        deletedAt: const Value(null),
+      ),
+    );
+  }
+
+  Future<void> renameNoteGroup(String id, String name) =>
+      (update(noteGroups)..where((t) => t.id.equals(id))).write(
+        NoteGroupsCompanion(
+          name: Value(name),
+          updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
+        ),
+      );
+
+  Future<void> setNoteGroupCollapsed(String id, bool collapsed) =>
+      (update(noteGroups)..where((t) => t.id.equals(id))).write(
+        NoteGroupsCompanion(
+          collapsed: Value(collapsed),
+          updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
+        ),
+      );
+
+  Future<void> softDeleteNoteGroup(String id) => transaction(() async {
+    await (update(noteGroups)..where((t) => t.id.equals(id))).write(
+      NoteGroupsCompanion(
+        deletedAt: Value(DateTime.now().millisecondsSinceEpoch),
+      ),
+    );
+    await (delete(groupMembers)..where((t) => t.groupId.equals(id))).go();
+  });
+
+  Future<void> assignNotesToGroup(String groupId, Iterable<String> ids) async {
+    final uniqueIds = ids.toSet().toList();
+    if (uniqueIds.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await transaction(() async {
+      final current =
+          await (select(groupMembers)
+                ..where((t) => t.groupId.equals(groupId))
+                ..orderBy([(t) => OrderingTerm.desc(t.position)]))
+              .get();
+      var position = current.isEmpty ? 0 : current.first.position + 1;
+      for (final stickyId in uniqueIds) {
+        await into(groupMembers).insertOnConflictUpdate(
+          GroupMembersCompanion.insert(
+            stickyId: stickyId,
+            groupId: groupId,
+            position: position++,
+            addedAt: now,
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> removeNotesFromGroup(Iterable<String> ids) {
+    final uniqueIds = ids.toSet().toList();
+    if (uniqueIds.isEmpty) return Future.value();
+    return (delete(
+      groupMembers,
+    )..where((t) => t.stickyId.isIn(uniqueIds))).go();
+  }
+
+  Future<void> deleteGroupMembershipForNote(String id) =>
+      (delete(groupMembers)..where((t) => t.stickyId.equals(id))).go();
 
   Future<List<EmbeddingRow>> allEmbeddingsForModel(String modelId) =>
       (select(embeddings)..where((t) => t.modelId.equals(modelId))).get();
