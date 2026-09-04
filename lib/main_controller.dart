@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:uuid/uuid.dart';
@@ -36,10 +37,12 @@ class MainController extends ChangeNotifier {
   final Map<String, WindowController> _windows = {};
   WindowController? _overviewWin; // 전체 보기 창(열려 있으면 변경을 push)
   WindowController? _modelWin;
+  WindowController? _backupWin;
   String? _overviewNotice;
   int _indexedNotes = 0;
   int _indexTotal = 0;
   int _indexGeneration = 0;
+  Future<void> Function()? onRestartRequested;
 
   /// 승인된 연결(지식 그래프). 인접/묶음 알고리즘은 LinkGraph 가 담당.
   final LinkGraph _graph = LinkGraph();
@@ -532,6 +535,26 @@ class MainController extends ChangeNotifier {
         }
       case ToMain.openModels:
         await openModels();
+      case ToMain.getBackupState:
+        return jsonEncode(await _backupState());
+      case ToMain.createAutomaticBackup:
+        await _backups.createAutomaticBackup();
+        return jsonEncode(await _backupState());
+      case ToMain.restoreBackupPath:
+        final result = await _backups.stageRestore(call.arguments as String);
+        return jsonEncode({
+          'noteCount': result.noteCount,
+          'imageCount': result.imageCount,
+        });
+      case ToMain.openBackupFolder:
+        await openBackupFolder();
+      case ToMain.restartForRestore:
+        final restart = onRestartRequested;
+        if (restart != null) {
+          unawaited(
+            Future<void>.delayed(const Duration(milliseconds: 150), restart),
+          );
+        }
     }
     return null;
   }
@@ -857,6 +880,39 @@ class MainController extends ChangeNotifier {
   Future<BackupResult?> exportBackup() => _backups.pickAndCreateBackup();
 
   Future<RestoreResult?> stageRestore() => _backups.pickAndStageRestore();
+
+  Future<Map<String, dynamic>> _backupState() async => {
+    'directoryPath': await _backups.automaticBackupDirectoryPath(),
+    'backups': [
+      for (final backup in await _backups.listAutomaticBackups())
+        backup.toJson(),
+    ],
+  };
+
+  Future<void> openBackupFolder() async {
+    final path = await _backups.automaticBackupDirectoryPath();
+    await Process.run('open', [path]);
+  }
+
+  Future<void> openBackups() async {
+    final state = await _backupState();
+    final existing = _backupWin;
+    if (existing != null) {
+      try {
+        await existing.invokeMethod(ToWindow.refresh, jsonEncode(state));
+        await existing.show();
+        return;
+      } catch (_) {
+        _backupWin = null;
+      }
+    }
+    _backupWin = await WindowController.create(
+      WindowConfiguration(
+        hiddenAtLaunch: true,
+        arguments: jsonEncode({'kind': 'backups', 'state': state}),
+      ),
+    );
+  }
 
   Future<void> shutdown() => _db.close();
 

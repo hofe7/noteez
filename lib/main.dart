@@ -11,6 +11,7 @@ import 'menubar.dart';
 import 'models/sticky.dart';
 import 'report.dart';
 import 'sticky_window_sizing.dart';
+import 'windows/backup_window.dart';
 import 'windows/control_window.dart';
 import 'windows/graph_window.dart' show OverviewWindowApp;
 import 'windows/model_window.dart';
@@ -146,6 +147,19 @@ Future<void> main(List<String> args) async {
       },
     );
     runApp(ModelWindowApp(initialState: state));
+    return;
+  }
+
+  if (m['kind'] == 'backups') {
+    final state = m['state'] as Map<String, dynamic>;
+    windowManager.waitUntilReadyToShow(
+      const WindowOptions(size: Size(560, 640), center: true),
+      () async {
+        await windowManager.setTitle('Noteez · 백업');
+        await windowManager.show();
+      },
+    );
+    runApp(BackupWindowApp(initialState: state));
     return;
   }
 

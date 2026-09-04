@@ -110,6 +110,11 @@ void main() {
         .where((entity) => entity is File && entity.path.endsWith('.zip'))
         .toList();
     expect(files, hasLength(2));
+    final history = await service.listAutomaticBackups();
+    expect(history, hasLength(2));
+    expect(history.first.isValid, isTrue);
+    expect(history.first.noteCount, 1);
+    expect(history.first.imageCount, 0);
   });
 
   test('rejects an arbitrary zip before staging a restore', () async {
