@@ -9,6 +9,7 @@
     <img src="https://img.shields.io/badge/built%20with-Flutter-54C5F8" alt="Built with Flutter">
     <img src="https://img.shields.io/badge/privacy-local--first-5B8C5A" alt="Local-first">
     <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License">
+    <a href="https://github.com/hofe7/noteez/actions/workflows/ci.yml"><img src="https://github.com/hofe7/noteez/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   </p>
 </div>
 
@@ -161,6 +162,27 @@ build/macos/Build/Products/Release/noteez.app
 xattr -dr com.apple.quarantine /Applications/Noteez.app
 open /Applications/Noteez.app
 ```
+
+### GitHub Release 만들기
+
+일반 push와 Pull Request에서는 Linux 러너로 정적 분석과 전체 테스트를
+실행합니다. macOS 빌드는 릴리스 태그를 올릴 때만 실행해 Actions 사용량을 줄입니다.
+
+1. `pubspec.yaml`의 앱 버전을 올리고 변경을 `main`에 반영합니다.
+2. 앱 버전과 같은 태그를 만들어 push합니다. 빌드 번호(`+7`)는 태그에서 제외합니다.
+
+```bash
+# pubspec.yaml이 version: 1.2.1+8인 경우
+git tag -a v1.2.1 -m "Noteez 1.2.1"
+git push origin v1.2.1
+```
+
+태그가 올라오면 GitHub Actions가 다시 분석·테스트하고 universal macOS 앱을
+ad-hoc 서명한 뒤, `Noteez-1.2.1.dmg`와 SHA-256 체크섬을 GitHub Release에
+게시합니다. 태그와 `pubspec.yaml` 버전이 다르면 배포하지 않습니다.
+
+Apple Developer ID 서명과 공증은 아직 포함하지 않으므로, 자동 생성된 DMG도
+첫 실행 시 시스템 설정에서 수동 허용해야 합니다.
 
 ## 개발
 
