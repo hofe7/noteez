@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'backup/backup_service.dart';
 import 'main_controller.dart';
 import 'menubar.dart';
 import 'models/sticky.dart';
@@ -25,8 +27,23 @@ Future<void> main(List<String> args) async {
   final argStr = wc.arguments;
 
   if (argStr.isEmpty) {
+    final backups = BackupService();
+    try {
+      await backups.applyPendingRestore();
+    } catch (e) {
+      // A restore filesystem problem must not make the note app unlaunchable.
+      debugPrint('startup restore failed: $e');
+    }
     // 메인 = 권위자. DB 로드 + 스티커 창 생성.
     await mainController.start();
+    // Images can make a backup large, so launch first and snapshot in the
+    // background. SQLite's backup API still gives us a consistent live copy.
+    unawaited(
+      backups.createAutomaticBackup().catchError((Object e) {
+        debugPrint('startup backup failed: $e');
+        return null;
+      }),
+    );
 
     // 메뉴바 + 글로벌 핫키. 성공하면 컨트롤 창 없이 숨김(메뉴바 앱).
     // 실패하면 안전하게 컨트롤 창으로 폴백(메모 추가 수단 보장).

@@ -86,6 +86,9 @@ class MenubarController with TrayListener {
       MenuItem(key: 'importNotionZip', label: 'Notion ZIP 가져오기…'),
       MenuItem(key: 'exportMarkdown', label: '모든 메모를 Markdown으로 내보내기…'),
       MenuItem.separator(),
+      MenuItem(key: 'exportBackup', label: 'Noteez 백업 저장…'),
+      MenuItem(key: 'restoreBackup', label: 'Noteez 백업에서 복원…'),
+      MenuItem.separator(),
       MenuItem(key: 'models', label: 'AI 연결 모델…'),
       MenuItem.separator(),
       MenuItem(key: 'quit', label: 'Noteez 종료'),
@@ -121,6 +124,10 @@ class MenubarController with TrayListener {
         unawaited(_importNotionZip());
       case 'exportMarkdown':
         unawaited(_exportAll());
+      case 'exportBackup':
+        unawaited(_exportBackup());
+      case 'restoreBackup':
+        unawaited(_restoreBackup());
       case 'models':
         mainController.openModels();
       case 'quit':
@@ -197,6 +204,33 @@ class MenubarController with TrayListener {
     }
   }
 
+  Future<void> _exportBackup() async {
+    try {
+      final result = await mainController.exportBackup();
+      if (result == null) return;
+      await _flashStatus(
+        '메모 ${result.noteCount}개 · 이미지 ${result.imageCount}개 백업 완료',
+      );
+    } catch (e) {
+      debugPrint('Noteez backup failed: $e');
+      await _flashStatus('Noteez 백업 실패');
+    }
+  }
+
+  Future<void> _restoreBackup() async {
+    try {
+      final result = await mainController.stageRestore();
+      if (result == null) return;
+      await trayManager.setToolTip(
+        '메모 ${result.noteCount}개 복원 준비 완료 · Noteez 재시작 중',
+      );
+      await _restart();
+    } catch (e) {
+      debugPrint('Noteez restore failed: $e');
+      await _flashStatus('Noteez 백업 복원 실패');
+    }
+  }
+
   Future<void> _flashStatus(String message) async {
     await trayManager.setToolTip(message);
     await Future<void>.delayed(const Duration(seconds: 2));
@@ -209,6 +243,25 @@ class MenubarController with TrayListener {
       await trayManager.destroy();
     } catch (e) {
       debugPrint('menubar teardown: $e');
+    }
+    exit(0);
+  }
+
+  Future<void> _restart() async {
+    try {
+      await hotKeyManager.unregisterAll();
+      await trayManager.destroy();
+      await mainController.shutdown();
+      final executable = File(Platform.resolvedExecutable);
+      final appBundle = executable.parent.parent.parent.path;
+      await Process.start('/bin/sh', [
+        '-c',
+        'sleep 1; /usr/bin/open -n -- "\$1"',
+        'noteez-restart',
+        appBundle,
+      ], mode: ProcessStartMode.detached);
+    } catch (e) {
+      debugPrint('Noteez restart failed: $e');
     }
     exit(0);
   }

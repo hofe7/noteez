@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'backup/backup_service.dart';
 import 'connection_engine.dart';
 import 'db/database.dart';
 import 'huggingface_model_search.dart';
@@ -27,6 +28,7 @@ const _uuid = Uuid();
 /// 메인 프로세스 = 권위자. 상태 + Drift(SQLite) 영속화 소유, 스티커 창 생성/추적.
 class MainController extends ChangeNotifier {
   final AppDatabase _db = AppDatabase();
+  final BackupService _backups = BackupService();
   final ConnectionEngine _conn = ConnectionEngine();
   final ModelManager _models = ModelManager();
   final HuggingFaceModelSearch _modelSearch = HuggingFaceModelSearch();
@@ -589,7 +591,9 @@ class MainController extends ChangeNotifier {
   >
   importMarkdownFiles() async {
     final batch = await _markdown.pickFiles();
-    return batch == null ? null : _storeMarkdownImports(batch);
+    if (batch == null) return null;
+    await _backups.createAutomaticBackup();
+    return _storeMarkdownImports(batch);
   }
 
   Future<
@@ -604,7 +608,9 @@ class MainController extends ChangeNotifier {
   >
   importMarkdownFolder() async {
     final batch = await _markdown.pickFolder();
-    return batch == null ? null : _storeMarkdownImports(batch);
+    if (batch == null) return null;
+    await _backups.createAutomaticBackup();
+    return _storeMarkdownImports(batch);
   }
 
   Future<
@@ -619,7 +625,9 @@ class MainController extends ChangeNotifier {
   >
   importNotionZip() async {
     final batch = await _markdown.pickNotionZip();
-    return batch == null ? null : _storeMarkdownImports(batch);
+    if (batch == null) return null;
+    await _backups.createAutomaticBackup();
+    return _storeMarkdownImports(batch);
   }
 
   Future<
@@ -845,6 +853,12 @@ class MainController extends ChangeNotifier {
           member.stickyId: NoteMarkdownGroup(id: group.id, name: group.name),
     },
   );
+
+  Future<BackupResult?> exportBackup() => _backups.pickAndCreateBackup();
+
+  Future<RestoreResult?> stageRestore() => _backups.pickAndStageRestore();
+
+  Future<void> shutdown() => _db.close();
 
   /// 모든 스티커 창을 앞으로.
   Future<void> showAll() async {
