@@ -2,6 +2,9 @@ import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
 
+const double kDefaultStickyWidth = 340;
+const double kDefaultStickyHeight = 240;
+
 /// 스티커 한 줄(블록). 구조화 모델 = todo 상태가 1급 데이터.
 /// 나중에 "내가 한 일" 보고/검색이 정규식 긁기 없이 공짜로 풀린다.
 sealed class Block {
@@ -31,7 +34,8 @@ sealed class Block {
 class TextBlock extends Block {
   const TextBlock({required super.id, required super.text});
 
-  TextBlock copyWith({String? text}) => TextBlock(id: id, text: text ?? this.text);
+  TextBlock copyWith({String? text}) =>
+      TextBlock(id: id, text: text ?? this.text);
 
   @override
   Map<String, dynamic> toJson() => {'type': 'text', 'id': id, 'text': text};
@@ -52,22 +56,21 @@ class TodoBlock extends Block {
     bool? checked,
     int? completedAt,
     bool clearCompleted = false,
-  }) =>
-      TodoBlock(
-        id: id,
-        text: text ?? this.text,
-        checked: checked ?? this.checked,
-        completedAt: clearCompleted ? null : (completedAt ?? this.completedAt),
-      );
+  }) => TodoBlock(
+    id: id,
+    text: text ?? this.text,
+    checked: checked ?? this.checked,
+    completedAt: clearCompleted ? null : (completedAt ?? this.completedAt),
+  );
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'todo',
-        'id': id,
-        'text': text,
-        'checked': checked,
-        'completedAt': completedAt,
-      };
+    'type': 'todo',
+    'id': id,
+    'text': text,
+    'checked': checked,
+    'completedAt': completedAt,
+  };
 }
 
 /// 붙여넣은 이미지 블록. 바이트는 컨테이너 파일로 저장하고 경로만 보관.
@@ -91,6 +94,8 @@ class Sticky {
   final int colorIndex;
   final double x;
   final double y;
+  final double width;
+  final double height;
   final bool collapsed;
   final bool pinned; // 항상 위에 고정
   final bool open; // 책상 위(창 열림) vs 서랍(닫힘, 데이터 유지)
@@ -104,6 +109,8 @@ class Sticky {
     required this.colorIndex,
     required this.x,
     required this.y,
+    this.width = kDefaultStickyWidth,
+    this.height = kDefaultStickyHeight,
     this.collapsed = false,
     this.pinned = false,
     this.open = true,
@@ -117,56 +124,63 @@ class Sticky {
     int? colorIndex,
     double? x,
     double? y,
+    double? width,
+    double? height,
     bool? collapsed,
     bool? pinned,
     bool? open,
     int? remindAt,
     bool clearRemind = false,
     DateTime? updatedAt,
-  }) =>
-      Sticky(
-        id: id,
-        blocks: blocks ?? this.blocks,
-        colorIndex: colorIndex ?? this.colorIndex,
-        x: x ?? this.x,
-        y: y ?? this.y,
-        collapsed: collapsed ?? this.collapsed,
-        pinned: pinned ?? this.pinned,
-        open: open ?? this.open,
-        remindAt: clearRemind ? null : (remindAt ?? this.remindAt),
-        createdAt: createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
+  }) => Sticky(
+    id: id,
+    blocks: blocks ?? this.blocks,
+    colorIndex: colorIndex ?? this.colorIndex,
+    x: x ?? this.x,
+    y: y ?? this.y,
+    width: width ?? this.width,
+    height: height ?? this.height,
+    collapsed: collapsed ?? this.collapsed,
+    pinned: pinned ?? this.pinned,
+    open: open ?? this.open,
+    remindAt: clearRemind ? null : (remindAt ?? this.remindAt),
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'colorIndex': colorIndex,
-        'x': x,
-        'y': y,
-        'collapsed': collapsed,
-        'pinned': pinned,
-        'open': open,
-        'remindAt': remindAt,
-        'createdAt': createdAt.millisecondsSinceEpoch,
-        'updatedAt': updatedAt.millisecondsSinceEpoch,
-        'blocks': blocks.map((b) => b.toJson()).toList(),
-      };
+    'id': id,
+    'colorIndex': colorIndex,
+    'x': x,
+    'y': y,
+    'width': width,
+    'height': height,
+    'collapsed': collapsed,
+    'pinned': pinned,
+    'open': open,
+    'remindAt': remindAt,
+    'createdAt': createdAt.millisecondsSinceEpoch,
+    'updatedAt': updatedAt.millisecondsSinceEpoch,
+    'blocks': blocks.map((b) => b.toJson()).toList(),
+  };
 
   factory Sticky.fromJson(Map<String, dynamic> j) => Sticky(
-        id: j['id'] as String,
-        colorIndex: j['colorIndex'] as int,
-        x: (j['x'] as num).toDouble(),
-        y: (j['y'] as num).toDouble(),
-        collapsed: j['collapsed'] as bool? ?? false,
-        pinned: j['pinned'] as bool? ?? false,
-        open: j['open'] as bool? ?? true,
-        remindAt: j['remindAt'] as int?,
-        createdAt: DateTime.fromMillisecondsSinceEpoch(j['createdAt'] as int),
-        updatedAt: DateTime.fromMillisecondsSinceEpoch(j['updatedAt'] as int),
-        blocks: (j['blocks'] as List)
-            .map((e) => Block.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+    id: j['id'] as String,
+    colorIndex: j['colorIndex'] as int,
+    x: (j['x'] as num).toDouble(),
+    y: (j['y'] as num).toDouble(),
+    width: (j['width'] as num?)?.toDouble() ?? kDefaultStickyWidth,
+    height: (j['height'] as num?)?.toDouble() ?? kDefaultStickyHeight,
+    collapsed: j['collapsed'] as bool? ?? false,
+    pinned: j['pinned'] as bool? ?? false,
+    open: j['open'] as bool? ?? true,
+    remindAt: j['remindAt'] as int?,
+    createdAt: DateTime.fromMillisecondsSinceEpoch(j['createdAt'] as int),
+    updatedAt: DateTime.fromMillisecondsSinceEpoch(j['updatedAt'] as int),
+    blocks: (j['blocks'] as List)
+        .map((e) => Block.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
 
   /// 접혔을 때 헤더에 보여줄 한 줄.
   String get preview {
@@ -199,16 +213,16 @@ Sticky makeSticky({
 /// 첫 실행 시 책상에 놓이는 환영 메모 1장. 지우면 깨끗한 빈 화면.
 /// 데모 데이터가 아니라 핵심 동작을 알려주는 진짜 안내 — 익히면 체크하고 버리면 됨.
 List<Sticky> seedStickies() => [
-      makeSticky(
-        x: 320,
-        y: 180,
-        colorIndex: 2,
-        blocks: [
-          textBlock('Noteez 👋'),
-          textBlock('그냥 적어. 필요할 때 찾아줄게.'),
-          todoBlock('[] 치면 할 일 — 클릭으로 완료'),
-          todoBlock('⌘⇧Space 어디서든 빠르게 캡처'),
-          todoBlock('⌘⇧K 검색 · ⌘⇧G 전체 보기'),
-        ],
-      ),
-    ];
+  makeSticky(
+    x: 320,
+    y: 180,
+    colorIndex: 2,
+    blocks: [
+      textBlock('Noteez 👋'),
+      textBlock('그냥 적어. 필요할 때 찾아줄게.'),
+      todoBlock('[] 치면 할 일 — 클릭으로 완료'),
+      todoBlock('⌘⇧Space 어디서든 빠르게 캡처'),
+      todoBlock('⌘⇧K 검색 · ⌘⇧G 전체 보기'),
+    ],
+  ),
+];

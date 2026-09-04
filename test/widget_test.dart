@@ -11,20 +11,34 @@ void main() {
       y: 20,
       colorIndex: 1,
       blocks: [textBlock('hi'), todoBlock('do it', true)],
-    );
+    ).copyWith(width: 420, height: 360);
 
     final back = Sticky.fromJson(
-        jsonDecode(jsonEncode(s.toJson())) as Map<String, dynamic>);
+      jsonDecode(jsonEncode(s.toJson())) as Map<String, dynamic>,
+    );
 
     expect(back.id, s.id);
     expect(back.x, 10);
     expect(back.y, 20);
+    expect(back.width, 420);
+    expect(back.height, 360);
     expect(back.colorIndex, 1);
     expect(back.blocks.length, 2);
     expect(back.blocks[0], isA<TextBlock>());
     expect(back.blocks[0].text, 'hi');
     expect(back.blocks[1], isA<TodoBlock>());
     expect((back.blocks[1] as TodoBlock).checked, true);
+  });
+
+  test('legacy Sticky JSON receives the comfortable default size', () {
+    final json = makeSticky(x: 10, y: 20).toJson()
+      ..remove('width')
+      ..remove('height');
+
+    final sticky = Sticky.fromJson(json);
+
+    expect(sticky.width, kDefaultStickyWidth);
+    expect(sticky.height, kDefaultStickyHeight);
   });
 
   test('buildReport groups completed (in-window) and open todos', () {
@@ -42,15 +56,17 @@ void main() {
       blocks: [
         TextBlock(id: 't', text: '고객사 A'),
         TodoBlock(
-            id: 'c1',
-            text: '견적 보내기',
-            checked: true,
-            completedAt: recent.millisecondsSinceEpoch),
+          id: 'c1',
+          text: '견적 보내기',
+          checked: true,
+          completedAt: recent.millisecondsSinceEpoch,
+        ),
         TodoBlock(
-            id: 'c2',
-            text: '오래된 완료',
-            checked: true,
-            completedAt: old.millisecondsSinceEpoch),
+          id: 'c2',
+          text: '오래된 완료',
+          checked: true,
+          completedAt: old.millisecondsSinceEpoch,
+        ),
         TodoBlock(id: 'o1', text: '옵션 정리'),
       ],
     );

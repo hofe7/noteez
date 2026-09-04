@@ -8,6 +8,7 @@ import 'main_controller.dart';
 import 'menubar.dart';
 import 'models/sticky.dart';
 import 'report.dart';
+import 'sticky_window_sizing.dart';
 import 'windows/control_window.dart';
 import 'windows/graph_window.dart' show OverviewWindowApp;
 import 'windows/model_window.dart';
@@ -134,8 +135,8 @@ Future<void> main(List<String> args) async {
   // 스티커 창
   final sticky = Sticky.fromJson(m);
   final focusOnOpen = m['focusOnOpen'] == true; // 검색/소환으로 열림 → 바로 편집
-  const opts = WindowOptions(
-    size: Size(248, 212),
+  final opts = WindowOptions(
+    size: StickyWindowSizing.initialSize(sticky),
     backgroundColor: Colors.transparent,
     titleBarStyle: TitleBarStyle.hidden,
     windowButtonVisibility: false,

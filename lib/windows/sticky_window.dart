@@ -10,6 +10,7 @@ import '../editor/note_editor.dart';
 import '../ipc.dart';
 import '../models/sticky.dart';
 import '../sticky_palette.dart';
+import '../sticky_window_sizing.dart';
 
 class StickyWindowApp extends StatelessWidget {
   final Sticky initial;
@@ -46,11 +47,9 @@ class StickyWindow extends StatefulWidget {
 
 class _StickyWindowState extends State<StickyWindow> with WindowListener {
   static const _main = MainChannel.instance;
-  static const double _width = 244; // 기본 너비
-  static const double _headerH = 30;
-  static const double _maxBodyH = 520;
+  static const double _headerH = StickyWindowSizing.headerHeight;
 
-  double _winW = _width; // 현재 창 너비(사용자가 넓히면 유지) — 접기/펴기에도 보존
+  late double _winW; // 현재 창 너비(사용자가 넓히면 유지) — 접기/펴기에도 보존
 
   final GlobalKey<NoteEditorState> _editorKey = GlobalKey<NoteEditorState>();
 
@@ -59,6 +58,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   Timer? _resizeTimer;
   final GlobalKey _bodyKey = GlobalKey();
   final GlobalKey _footerKey = GlobalKey();
+  double? _lastWindowW;
   double? _lastWindowH;
   double? _expandedH; // 펴진 상태의 마지막 높이(접었다 펼 때 복원)
   List<Map<String, dynamic>> _links = const []; // 승인된 연결
@@ -76,6 +76,11 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   @override
   void initState() {
     super.initState();
+    _winW = _s.width;
+    _lastWindowW = _winW;
+    _lastWindowH = _s.collapsed ? _headerH : _s.height;
+    _expandedH = _s.height;
+    _userSized = StickyWindowSizing.hasSavedManualSize(_s);
     windowManager.addListener(this);
     // 메인→이 창 단일 메시지 채널: 'focusEditor' 오면 에디터 끝에 커서.
     WindowController.fromCurrentEngine().then((c) {
@@ -101,19 +106,37 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     });
   }
 
-  // 사용자가 창 크기를 직접 바꾸면(우리 setSize 와 다른 높이) 자동 맞춤 중단.
+  // 사용자가 창 크기를 직접 바꾸면 자동 맞춤을 중단하고 다음 실행에도 복원한다.
   @override
   void onWindowResized() async {
     final sz = await windowManager.getSize();
     if (!mounted) return;
-    _winW = sz.width; // 사용자가 너비를 바꿨으면 반영(우리 setSize는 같은 값이라 무해)
-    if (_lastWindowH != null && (sz.height - _lastWindowH!).abs() > 8) {
-      _userSized = true;
-      if (!_s.collapsed) _expandedH = sz.height; // 수동 크기도 기억
+    final widthChanged =
+        _lastWindowW != null && (sz.width - _lastWindowW!).abs() > 8;
+    final heightChanged =
+        _lastWindowH != null && (sz.height - _lastWindowH!).abs() > 8;
+    _winW = sz.width;
+    if (!widthChanged && !heightChanged) return;
+
+    _resizeTimer?.cancel();
+    _userSized = true;
+    _lastWindowW = sz.width;
+    _lastWindowH = sz.height;
+    if (_s.collapsed) {
+      _s = _s.copyWith(width: sz.width, updatedAt: DateTime.now());
+    } else {
+      _expandedH = sz.height;
+      _s = _s.copyWith(
+        width: sz.width,
+        height: sz.height,
+        updatedAt: DateTime.now(),
+      );
     }
+    _persist();
   }
 
   Future<void> _setH(double h) async {
+    _lastWindowW = _winW;
     _lastWindowH = h;
     await windowManager.setSize(Size(_winW, h)); // 너비는 현재 값 유지(접기/펴기 불변)
   }
@@ -191,7 +214,10 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
       } else {
         final bodyH = _bodyKey.currentContext?.size?.height ?? 0;
         final footerH = _footerKey.currentContext?.size?.height ?? 0;
-        target = _headerH + (bodyH + footerH).clamp(0.0, _maxBodyH);
+        target = StickyWindowSizing.automaticExpandedHeight(
+          bodyHeight: bodyH,
+          footerHeight: footerH,
+        );
         _expandedH = target; // 펴진 높이 기억
       }
       if (_lastWindowH != null && (_lastWindowH! - target).abs() <= 0.5) return;
@@ -199,6 +225,8 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
       // 네이티브 setSize 는 비싸서 디바운스. 글자/블록은 즉시 뜨고 창은 살짝 뒤에.
       _resizeTimer?.cancel();
       _resizeTimer = Timer(const Duration(milliseconds: 70), () {
+        if (_userSized) return;
+        _lastWindowW = _winW;
         windowManager.setSize(Size(_winW, target)); // 너비 유지, 높이만 맞춤
       });
     });
