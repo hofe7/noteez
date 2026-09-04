@@ -10,12 +10,15 @@ void main() {
   testWidgets('mixed work and personal notes form a readable overview', (
     tester,
   ) async {
-    final fontBytes = File(
-      '/System/Library/Fonts/AppleSDGothicNeo.ttc',
-    ).readAsBytesSync();
-    await (FontLoader(
-      'DemoKorean',
-    )..addFont(Future.value(ByteData.sublistView(fontBytes)))).load();
+    final koreanFont = File('/System/Library/Fonts/AppleSDGothicNeo.ttc');
+    String? demoFontFamily;
+    if (koreanFont.existsSync()) {
+      final fontBytes = koreanFont.readAsBytesSync();
+      await (FontLoader(
+        'DemoKorean',
+      )..addFont(Future.value(ByteData.sublistView(fontBytes)))).load();
+      demoFontFamily = 'DemoKorean';
+    }
     var flutterRoot = File(Platform.resolvedExecutable).parent;
     for (var i = 0; i < 5; i++) {
       flutterRoot = flutterRoot.parent;
@@ -56,7 +59,7 @@ void main() {
         modelReady: true,
         modelIndexed: overviewDemoNotes.length,
         modelIndexTotal: overviewDemoNotes.length,
-        fontFamily: 'DemoKorean',
+        fontFamily: demoFontFamily,
       ),
     );
     await tester.pumpAndSettle();
