@@ -35,7 +35,9 @@ rm -rf "$DIST" && mkdir -p "$DIST"
 STAGE="$(mktemp -d)"
 cp -R "$APP_SRC" "$STAGE/$APP_NAME.app"
 ln -s /Applications "$STAGE/Applications"
-cp THIRD_PARTY_LICENSES.md "$STAGE/Licenses.txt" 2>/dev/null || true
+mkdir -p "$STAGE/Licenses"
+cp LICENSE "$STAGE/Licenses/Noteez.txt"
+cp THIRD_PARTY_LICENSES.md "$STAGE/Licenses/Third-Party.md"
 
 # Unsigned-app open instructions (no Apple Developer ID yet → Gatekeeper blocks
 # double-click on first run).
