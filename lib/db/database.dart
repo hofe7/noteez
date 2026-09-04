@@ -18,6 +18,10 @@ class Stickies extends Table {
   IntColumn get colorIndex => integer()();
   RealColumn get x => real()();
   RealColumn get y => real()();
+  RealColumn get width =>
+      real().withDefault(const Constant(kDefaultStickyWidth))();
+  RealColumn get height =>
+      real().withDefault(const Constant(kDefaultStickyHeight))();
   BoolColumn get collapsed => boolean().withDefault(const Constant(false))();
   BoolColumn get pinned => boolean().withDefault(const Constant(false))();
   BoolColumn get open => boolean().withDefault(const Constant(true))();
@@ -130,7 +134,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -146,6 +150,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 10) {
         await m.createTable(noteGroups);
         await m.createTable(groupMembers);
+      }
+      if (from < 11) {
+        await m.addColumn(stickies, stickies.width);
+        await m.addColumn(stickies, stickies.height);
       }
     },
   );
@@ -354,6 +362,8 @@ class AppDatabase extends _$AppDatabase {
         colorIndex: s.colorIndex,
         x: s.x,
         y: s.y,
+        width: Value(s.width),
+        height: Value(s.height),
         collapsed: Value(s.collapsed),
         pinned: Value(s.pinned),
         open: Value(s.open),
@@ -381,6 +391,8 @@ class AppDatabase extends _$AppDatabase {
     colorIndex: r.colorIndex,
     x: r.x,
     y: r.y,
+    width: r.width,
+    height: r.height,
     collapsed: r.collapsed,
     pinned: r.pinned,
     open: r.open,

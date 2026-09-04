@@ -47,6 +47,26 @@ class $StickiesTable extends Stickies
     type: DriftSqlType.double,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _widthMeta = const VerificationMeta('width');
+  @override
+  late final GeneratedColumn<double> width = GeneratedColumn<double>(
+    'width',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(kDefaultStickyWidth),
+  );
+  static const VerificationMeta _heightMeta = const VerificationMeta('height');
+  @override
+  late final GeneratedColumn<double> height = GeneratedColumn<double>(
+    'height',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(kDefaultStickyHeight),
+  );
   static const VerificationMeta _collapsedMeta = const VerificationMeta(
     'collapsed',
   );
@@ -149,6 +169,8 @@ class $StickiesTable extends Stickies
     colorIndex,
     x,
     y,
+    width,
+    height,
     collapsed,
     pinned,
     open,
@@ -192,6 +214,18 @@ class $StickiesTable extends Stickies
       context.handle(_yMeta, y.isAcceptableOrUnknown(data['y']!, _yMeta));
     } else if (isInserting) {
       context.missing(_yMeta);
+    }
+    if (data.containsKey('width')) {
+      context.handle(
+        _widthMeta,
+        width.isAcceptableOrUnknown(data['width']!, _widthMeta),
+      );
+    }
+    if (data.containsKey('height')) {
+      context.handle(
+        _heightMeta,
+        height.isAcceptableOrUnknown(data['height']!, _heightMeta),
+      );
     }
     if (data.containsKey('collapsed')) {
       context.handle(
@@ -272,6 +306,14 @@ class $StickiesTable extends Stickies
         DriftSqlType.double,
         data['${effectivePrefix}y'],
       )!,
+      width: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}width'],
+      )!,
+      height: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}height'],
+      )!,
       collapsed: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}collapsed'],
@@ -318,6 +360,8 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
   final int colorIndex;
   final double x;
   final double y;
+  final double width;
+  final double height;
   final bool collapsed;
   final bool pinned;
   final bool open;
@@ -331,6 +375,8 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     required this.colorIndex,
     required this.x,
     required this.y,
+    required this.width,
+    required this.height,
     required this.collapsed,
     required this.pinned,
     required this.open,
@@ -347,6 +393,8 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     map['color_index'] = Variable<int>(colorIndex);
     map['x'] = Variable<double>(x);
     map['y'] = Variable<double>(y);
+    map['width'] = Variable<double>(width);
+    map['height'] = Variable<double>(height);
     map['collapsed'] = Variable<bool>(collapsed);
     map['pinned'] = Variable<bool>(pinned);
     map['open'] = Variable<bool>(open);
@@ -368,6 +416,8 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
       colorIndex: Value(colorIndex),
       x: Value(x),
       y: Value(y),
+      width: Value(width),
+      height: Value(height),
       collapsed: Value(collapsed),
       pinned: Value(pinned),
       open: Value(open),
@@ -393,6 +443,8 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
       colorIndex: serializer.fromJson<int>(json['colorIndex']),
       x: serializer.fromJson<double>(json['x']),
       y: serializer.fromJson<double>(json['y']),
+      width: serializer.fromJson<double>(json['width']),
+      height: serializer.fromJson<double>(json['height']),
       collapsed: serializer.fromJson<bool>(json['collapsed']),
       pinned: serializer.fromJson<bool>(json['pinned']),
       open: serializer.fromJson<bool>(json['open']),
@@ -411,6 +463,8 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
       'colorIndex': serializer.toJson<int>(colorIndex),
       'x': serializer.toJson<double>(x),
       'y': serializer.toJson<double>(y),
+      'width': serializer.toJson<double>(width),
+      'height': serializer.toJson<double>(height),
       'collapsed': serializer.toJson<bool>(collapsed),
       'pinned': serializer.toJson<bool>(pinned),
       'open': serializer.toJson<bool>(open),
@@ -427,6 +481,8 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     int? colorIndex,
     double? x,
     double? y,
+    double? width,
+    double? height,
     bool? collapsed,
     bool? pinned,
     bool? open,
@@ -440,6 +496,8 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     colorIndex: colorIndex ?? this.colorIndex,
     x: x ?? this.x,
     y: y ?? this.y,
+    width: width ?? this.width,
+    height: height ?? this.height,
     collapsed: collapsed ?? this.collapsed,
     pinned: pinned ?? this.pinned,
     open: open ?? this.open,
@@ -457,6 +515,8 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
           : this.colorIndex,
       x: data.x.present ? data.x.value : this.x,
       y: data.y.present ? data.y.value : this.y,
+      width: data.width.present ? data.width.value : this.width,
+      height: data.height.present ? data.height.value : this.height,
       collapsed: data.collapsed.present ? data.collapsed.value : this.collapsed,
       pinned: data.pinned.present ? data.pinned.value : this.pinned,
       open: data.open.present ? data.open.value : this.open,
@@ -477,6 +537,8 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
           ..write('colorIndex: $colorIndex, ')
           ..write('x: $x, ')
           ..write('y: $y, ')
+          ..write('width: $width, ')
+          ..write('height: $height, ')
           ..write('collapsed: $collapsed, ')
           ..write('pinned: $pinned, ')
           ..write('open: $open, ')
@@ -495,6 +557,8 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     colorIndex,
     x,
     y,
+    width,
+    height,
     collapsed,
     pinned,
     open,
@@ -512,6 +576,8 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
           other.colorIndex == this.colorIndex &&
           other.x == this.x &&
           other.y == this.y &&
+          other.width == this.width &&
+          other.height == this.height &&
           other.collapsed == this.collapsed &&
           other.pinned == this.pinned &&
           other.open == this.open &&
@@ -527,6 +593,8 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
   final Value<int> colorIndex;
   final Value<double> x;
   final Value<double> y;
+  final Value<double> width;
+  final Value<double> height;
   final Value<bool> collapsed;
   final Value<bool> pinned;
   final Value<bool> open;
@@ -541,6 +609,8 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     this.colorIndex = const Value.absent(),
     this.x = const Value.absent(),
     this.y = const Value.absent(),
+    this.width = const Value.absent(),
+    this.height = const Value.absent(),
     this.collapsed = const Value.absent(),
     this.pinned = const Value.absent(),
     this.open = const Value.absent(),
@@ -556,6 +626,8 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     required int colorIndex,
     required double x,
     required double y,
+    this.width = const Value.absent(),
+    this.height = const Value.absent(),
     this.collapsed = const Value.absent(),
     this.pinned = const Value.absent(),
     this.open = const Value.absent(),
@@ -577,6 +649,8 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     Expression<int>? colorIndex,
     Expression<double>? x,
     Expression<double>? y,
+    Expression<double>? width,
+    Expression<double>? height,
     Expression<bool>? collapsed,
     Expression<bool>? pinned,
     Expression<bool>? open,
@@ -592,6 +666,8 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
       if (colorIndex != null) 'color_index': colorIndex,
       if (x != null) 'x': x,
       if (y != null) 'y': y,
+      if (width != null) 'width': width,
+      if (height != null) 'height': height,
       if (collapsed != null) 'collapsed': collapsed,
       if (pinned != null) 'pinned': pinned,
       if (open != null) 'open': open,
@@ -609,6 +685,8 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     Value<int>? colorIndex,
     Value<double>? x,
     Value<double>? y,
+    Value<double>? width,
+    Value<double>? height,
     Value<bool>? collapsed,
     Value<bool>? pinned,
     Value<bool>? open,
@@ -624,6 +702,8 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
       colorIndex: colorIndex ?? this.colorIndex,
       x: x ?? this.x,
       y: y ?? this.y,
+      width: width ?? this.width,
+      height: height ?? this.height,
       collapsed: collapsed ?? this.collapsed,
       pinned: pinned ?? this.pinned,
       open: open ?? this.open,
@@ -650,6 +730,12 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     }
     if (y.present) {
       map['y'] = Variable<double>(y.value);
+    }
+    if (width.present) {
+      map['width'] = Variable<double>(width.value);
+    }
+    if (height.present) {
+      map['height'] = Variable<double>(height.value);
     }
     if (collapsed.present) {
       map['collapsed'] = Variable<bool>(collapsed.value);
@@ -688,6 +774,8 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
           ..write('colorIndex: $colorIndex, ')
           ..write('x: $x, ')
           ..write('y: $y, ')
+          ..write('width: $width, ')
+          ..write('height: $height, ')
           ..write('collapsed: $collapsed, ')
           ..write('pinned: $pinned, ')
           ..write('open: $open, ')
@@ -2903,6 +2991,8 @@ typedef $$StickiesTableCreateCompanionBuilder =
       required int colorIndex,
       required double x,
       required double y,
+      Value<double> width,
+      Value<double> height,
       Value<bool> collapsed,
       Value<bool> pinned,
       Value<bool> open,
@@ -2919,6 +3009,8 @@ typedef $$StickiesTableUpdateCompanionBuilder =
       Value<int> colorIndex,
       Value<double> x,
       Value<double> y,
+      Value<double> width,
+      Value<double> height,
       Value<bool> collapsed,
       Value<bool> pinned,
       Value<bool> open,
@@ -2956,6 +3048,16 @@ class $$StickiesTableFilterComposer
 
   ColumnFilters<double> get y => $composableBuilder(
     column: $table.y,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get width => $composableBuilder(
+    column: $table.width,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get height => $composableBuilder(
+    column: $table.height,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3029,6 +3131,16 @@ class $$StickiesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get width => $composableBuilder(
+    column: $table.width,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get height => $composableBuilder(
+    column: $table.height,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get collapsed => $composableBuilder(
     column: $table.collapsed,
     builder: (column) => ColumnOrderings(column),
@@ -3093,6 +3205,12 @@ class $$StickiesTableAnnotationComposer
   GeneratedColumn<double> get y =>
       $composableBuilder(column: $table.y, builder: (column) => column);
 
+  GeneratedColumn<double> get width =>
+      $composableBuilder(column: $table.width, builder: (column) => column);
+
+  GeneratedColumn<double> get height =>
+      $composableBuilder(column: $table.height, builder: (column) => column);
+
   GeneratedColumn<bool> get collapsed =>
       $composableBuilder(column: $table.collapsed, builder: (column) => column);
 
@@ -3152,6 +3270,8 @@ class $$StickiesTableTableManager
                 Value<int> colorIndex = const Value.absent(),
                 Value<double> x = const Value.absent(),
                 Value<double> y = const Value.absent(),
+                Value<double> width = const Value.absent(),
+                Value<double> height = const Value.absent(),
                 Value<bool> collapsed = const Value.absent(),
                 Value<bool> pinned = const Value.absent(),
                 Value<bool> open = const Value.absent(),
@@ -3166,6 +3286,8 @@ class $$StickiesTableTableManager
                 colorIndex: colorIndex,
                 x: x,
                 y: y,
+                width: width,
+                height: height,
                 collapsed: collapsed,
                 pinned: pinned,
                 open: open,
@@ -3182,6 +3304,8 @@ class $$StickiesTableTableManager
                 required int colorIndex,
                 required double x,
                 required double y,
+                Value<double> width = const Value.absent(),
+                Value<double> height = const Value.absent(),
                 Value<bool> collapsed = const Value.absent(),
                 Value<bool> pinned = const Value.absent(),
                 Value<bool> open = const Value.absent(),
@@ -3196,6 +3320,8 @@ class $$StickiesTableTableManager
                 colorIndex: colorIndex,
                 x: x,
                 y: y,
+                width: width,
+                height: height,
                 collapsed: collapsed,
                 pinned: pinned,
                 open: open,

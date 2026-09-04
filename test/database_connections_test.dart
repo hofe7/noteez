@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:noteez/db/database.dart';
 import 'package:noteez/models/sticky.dart';
+import 'package:sqlite3/sqlite3.dart' as sqlite;
 
 void main() {
   late AppDatabase db;
@@ -19,6 +22,55 @@ void main() {
     await db.softDeleteLinkBetween('a', 'b');
 
     expect(await db.allActiveLinks(), isEmpty);
+  });
+
+  test('sticky window size is persisted', () async {
+    final sticky = makeSticky(x: 10, y: 20).copyWith(width: 430, height: 370);
+
+    await db.upsert(sticky);
+    final restored = (await db.allActive()).single;
+
+    expect(restored.width, 430);
+    expect(restored.height, 370);
+  });
+
+  test('schema 10 notes migrate to the comfortable default size', () async {
+    await db.close();
+    final directory = await Directory.systemTemp.createTemp(
+      'noteez-size-migration-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/noteez.sqlite');
+    final legacy = sqlite.sqlite3.open(file.path);
+    legacy.execute('''
+      CREATE TABLE stickies (
+        id TEXT NOT NULL PRIMARY KEY,
+        color_index INTEGER NOT NULL,
+        x REAL NOT NULL,
+        y REAL NOT NULL,
+        collapsed INTEGER NOT NULL DEFAULT 0,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        open INTEGER NOT NULL DEFAULT 1,
+        remind_at INTEGER,
+        blocks_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER
+      )
+    ''');
+    legacy.execute('''
+      INSERT INTO stickies (
+        id, color_index, x, y, blocks_json, created_at, updated_at
+      ) VALUES ('legacy', 0, 10, 20, '[{"type":"text","id":"b","text":"old"}]', 1, 1)
+    ''');
+    legacy.execute('PRAGMA user_version = 10');
+    legacy.close();
+
+    db = AppDatabase.forTesting(NativeDatabase(file));
+    final restored = (await db.allActive()).single;
+
+    expect(restored.width, kDefaultStickyWidth);
+    expect(restored.height, kDefaultStickyHeight);
   });
 
   test('embedding cache is isolated by selected model', () async {
