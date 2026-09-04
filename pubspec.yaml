@@ -50,7 +50,7 @@ dependencies:
   path: ^1.9.1
   archive: ^4.2.0
   crypto: ^3.0.7
-  sqlite3: ^3.3.2
+  sqlite3: ^3.5.2
   url_launcher: ^6.3.2
 
 dev_dependencies:
