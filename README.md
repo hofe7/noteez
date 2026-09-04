@@ -71,6 +71,8 @@ Noteez는 반대로 접근합니다.
 - Notion의 Markdown & CSV export ZIP 직접 가져오기
 - 모든 메모, 이미지, 연결, 수동 묶음을 Markdown으로 내보내기
 - 같은 원본을 다시 가져올 때 중복·갱신·충돌을 안전하게 처리
+- DB와 첨부 이미지를 하나의 이동 가능한 ZIP으로 백업·복원
+- 실행 시와 외부 데이터 가져오기 전 자동 백업, 최근 10개 순환 보관
 
 ## 단축키
 
@@ -88,8 +90,8 @@ Noteez는 Dock 대신 메뉴바에 머뭅니다.
 
 ## 개인정보 보호와 로컬 AI
 
-Noteez의 메모, 연결, 임베딩은 macOS Application Support 안의 SQLite DB에
-저장됩니다. 검색과 추천도 로컬에서 실행됩니다.
+Noteez의 메모, 연결, 임베딩은 macOS의 앱 전용 SQLite DB에 저장되고, 첨부
+이미지는 Application Support에 보관됩니다. 검색과 추천도 로컬에서 실행됩니다.
 
 임베딩 모델은 앱에 포함하지 않습니다. 사용자가 모델 창에서 선택하면 원 제작자의
 Hugging Face 저장소에서 직접 내려받습니다.
@@ -188,6 +190,7 @@ lib/
 ├── editor/          # Quill 편집 표현 ↔ Noteez 블록 모델
 ├── embed/           # 토크나이저와 ONNX Runtime 추론
 ├── markdown/        # Markdown·Obsidian·Notion 이동성
+├── backup/          # SQLite 스냅샷, 이미지 이동성, 백업·복원
 ├── models/          # 메모와 모델 카탈로그
 ├── reminder/        # 로컬 리마인더
 ├── windows/         # 스티커, 검색, 전체 보기, 보고서, 모델 창
@@ -219,7 +222,7 @@ Noteez는 macOS-first 프로젝트이며 활발히 개발 중입니다.
 - Apple 공증 전까지 배포본은 처음 실행 시 수동 허용이 필요합니다.
 
 다음 초점은 추천 묶음 편집 경험, 실제 메모 세트를 이용한 연결 품질 평가,
-백업·복원, 재현 가능한 오픈소스 릴리스 자동화입니다.
+백업 이력 UI, 재현 가능한 오픈소스 릴리스 자동화입니다.
 
 ## 기여하기
 

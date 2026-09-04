@@ -60,6 +60,34 @@ class ControlWindow extends StatelessWidget {
                 icon: const Icon(Icons.file_download_outlined),
                 label: const Text('Markdown 내보내기'),
               ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final result = await mainController.exportBackup();
+                  if (result != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('메모 ${result.noteCount}개 백업 완료')),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.backup_outlined),
+                label: const Text('Noteez 백업 저장'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final result = await mainController.stageRestore();
+                  if (result != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('복원 준비 완료 · Noteez를 다시 시작해 주세요'),
+                      ),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.restore_outlined),
+                label: const Text('Noteez 백업 복원'),
+              ),
               const Spacer(),
               const Text(
                 '임시 컨트롤 창 — 나중에 메뉴바로 대체',
