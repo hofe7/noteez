@@ -38,6 +38,11 @@ abstract final class ToMain {
   static const String searchModels = 'searchModels';
   static const String installSearchModel = 'installSearchModel';
   static const String openModels = 'openModels';
+  static const String getBackupState = 'getBackupState';
+  static const String createAutomaticBackup = 'createAutomaticBackup';
+  static const String restoreBackupPath = 'restoreBackupPath';
+  static const String openBackupFolder = 'openBackupFolder';
+  static const String restartForRestore = 'restartForRestore';
 }
 
 /// 메인 → 개별 창 메서드명 (각 창의 기본 채널로 invoke).
@@ -181,6 +186,25 @@ class MainChannel {
       _ch.invokeMethod(ToMain.installSearchModel, jsonEncode(profile));
 
   Future<void> openModels() => _ch.invokeMethod(ToMain.openModels);
+
+  Future<Map<String, dynamic>> getBackupState() async =>
+      jsonDecode(await _ch.invokeMethod(ToMain.getBackupState) as String)
+          as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> createAutomaticBackup() async =>
+      jsonDecode(await _ch.invokeMethod(ToMain.createAutomaticBackup) as String)
+          as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> restoreBackupPath(String path) async =>
+      jsonDecode(
+            await _ch.invokeMethod(ToMain.restoreBackupPath, path) as String,
+          )
+          as Map<String, dynamic>;
+
+  Future<void> openBackupFolder() => _ch.invokeMethod(ToMain.openBackupFolder);
+
+  Future<void> restartForRestore() =>
+      _ch.invokeMethod(ToMain.restartForRestore);
 
   Future<ConnectionResult> getConnection(String id) async =>
       ConnectionResult.parse(await _ch.invokeMethod(ToMain.getConnection, id));

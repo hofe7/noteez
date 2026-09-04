@@ -12,6 +12,7 @@ import 'main_controller.dart';
 /// ⌘⇧N 새 메모 / ⌘⇧S 모든 스티커 보이기.
 class MenubarController with TrayListener {
   Future<void> init() async {
+    mainController.onRestartRequested = _restart;
     trayManager.addListener(this);
     await trayManager.setIcon('assets/icons/tray.png', isTemplate: true);
     await trayManager.setToolTip('Noteez');
@@ -88,6 +89,7 @@ class MenubarController with TrayListener {
       MenuItem.separator(),
       MenuItem(key: 'exportBackup', label: 'Noteez 백업 저장…'),
       MenuItem(key: 'restoreBackup', label: 'Noteez 백업에서 복원…'),
+      MenuItem(key: 'backups', label: '자동 백업 관리…'),
       MenuItem.separator(),
       MenuItem(key: 'models', label: 'AI 연결 모델…'),
       MenuItem.separator(),
@@ -128,6 +130,8 @@ class MenubarController with TrayListener {
         unawaited(_exportBackup());
       case 'restoreBackup':
         unawaited(_restoreBackup());
+      case 'backups':
+        mainController.openBackups();
       case 'models':
         mainController.openModels();
       case 'quit':

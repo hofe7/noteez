@@ -35,6 +35,34 @@ class RestoreResult {
   final int imageCount;
 }
 
+class BackupEntry {
+  const BackupEntry({
+    required this.path,
+    required this.createdAt,
+    required this.sizeBytes,
+    required this.noteCount,
+    required this.imageCount,
+    required this.isValid,
+  });
+
+  final String path;
+  final DateTime createdAt;
+  final int sizeBytes;
+  final int? noteCount;
+  final int? imageCount;
+  final bool isValid;
+
+  Map<String, dynamic> toJson() => {
+    'path': path,
+    'name': p.basename(path),
+    'createdAt': createdAt.millisecondsSinceEpoch,
+    'sizeBytes': sizeBytes,
+    'noteCount': noteCount,
+    'imageCount': imageCount,
+    'isValid': isValid,
+  };
+}
+
 /// Consistent, portable backups for the database and image blocks.
 /// Downloaded AI models are deliberately excluded because they are large and
 /// can be installed again from the model manager.
@@ -53,6 +81,28 @@ class BackupService {
   final Future<Directory> Function() _supportDirectory;
   final DateTime Function() _now;
   final int maxAutomaticBackups;
+
+  Future<String> automaticBackupDirectoryPath() async {
+    final support = await _supportDirectory();
+    final root = Directory(p.join(support.path, 'backups'));
+    await root.create(recursive: true);
+    return root.path;
+  }
+
+  Future<List<BackupEntry>> listAutomaticBackups() async {
+    final root = Directory(await automaticBackupDirectoryPath());
+    final files = await root
+        .list()
+        .where((entity) => entity is File && p.extension(entity.path) == '.zip')
+        .cast<File>()
+        .toList();
+    final entries = <BackupEntry>[];
+    for (final file in files) {
+      entries.add(await _readBackupEntry(file));
+    }
+    entries.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return entries;
+  }
 
   Future<BackupResult?> pickAndCreateBackup() async {
     final location = await getSaveLocation(
@@ -377,6 +427,51 @@ class BackupService {
     });
     for (final old in files.skip(maxAutomaticBackups)) {
       await old.delete();
+    }
+  }
+
+  Future<BackupEntry> _readBackupEntry(File file) async {
+    final stat = await file.stat();
+    InputFileStream? input;
+    Archive? archive;
+    try {
+      input = InputFileStream(file.path);
+      archive = ZipDecoder().decodeStream(input, verify: true);
+      final manifestEntry = archive.findFile('manifest.json');
+      if (manifestEntry == null || manifestEntry.size > 64 * 1024) {
+        throw const FormatException('manifest missing');
+      }
+      final bytes = manifestEntry.readBytes();
+      if (bytes == null) throw const FormatException('manifest unreadable');
+      final manifest = jsonDecode(utf8.decode(bytes));
+      if (manifest is! Map<String, dynamic> ||
+          manifest['format'] != _backupFormat ||
+          manifest['formatVersion'] != _backupFormatVersion) {
+        throw const FormatException('manifest incompatible');
+      }
+      final createdAt = DateTime.tryParse(
+        manifest['createdAt'] as String? ?? '',
+      );
+      return BackupEntry(
+        path: file.path,
+        createdAt: createdAt?.toLocal() ?? stat.modified,
+        sizeBytes: stat.size,
+        noteCount: manifest['noteCount'] as int?,
+        imageCount: manifest['imageCount'] as int?,
+        isValid: true,
+      );
+    } catch (_) {
+      return BackupEntry(
+        path: file.path,
+        createdAt: stat.modified,
+        sizeBytes: stat.size,
+        noteCount: null,
+        imageCount: null,
+        isValid: false,
+      );
+    } finally {
+      await archive?.clear();
+      await input?.close();
     }
   }
 
