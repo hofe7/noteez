@@ -31,8 +31,13 @@ codesign --force --deep --sign - \
 codesign --verify --deep --strict "$APP_SRC"
 
 echo "==> staging"
-rm -rf "$DIST" && mkdir -p "$DIST"
+mkdir -p "$DIST"
+rm -f "$DMG"
 STAGE="$(mktemp -d)"
+cleanup() {
+  rm -rf "$STAGE"
+}
+trap cleanup EXIT
 cp -R "$APP_SRC" "$STAGE/$APP_NAME.app"
 ln -s /Applications "$STAGE/Applications"
 mkdir -p "$STAGE/Licenses"
@@ -65,7 +70,8 @@ TXT
 
 echo "==> hdiutil create"
 hdiutil create -volname "$VOL" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
-rm -rf "$STAGE"
+cleanup
+trap - EXIT
 
 SIZE=$(du -h "$DMG" | cut -f1)
 echo "==> done: $DMG ($SIZE)"
