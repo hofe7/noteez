@@ -24,6 +24,16 @@ Markdown 이동성은 그대로 동작합니다.
 
 ![여러 종류의 메모를 묶어 보여주는 Noteez 전체 보기](test/goldens/overview_mixed_notes.png)
 
+## 다운로드 · 초기 베타
+
+**[macOS용 Noteez 0.0.1 DMG 다운로드](https://github.com/hofe7/noteez/releases/download/v0.0.1/Noteez-0.0.1.dmg)**
+
+Apple Silicon·Intel용 universal 빌드입니다. 현재 UI는 한국어이며, 초기 베타로 공개합니다.
+Apple Developer ID 서명·공증은 아직 없어 첫 실행 시 macOS에서 수동 허용이 필요합니다.
+설치 방법과 검증 범위는 [릴리스 안내](https://github.com/hofe7/noteez/releases/tag/v0.0.1)를 확인해 주세요.
+문제나 사용 의견은 [Issues](https://github.com/hofe7/noteez/issues)에 남겨 주세요.
+개인 메모·DB·백업 파일은 첨부하지 말고 가상 예제로 재현해 주세요.
+
 ## 왜 Noteez인가요?
 
 대부분의 노트 앱은 정보를 잘 정리하려면 사용자가 먼저 구조를 만들어야 합니다.
@@ -182,10 +192,10 @@ open /Applications/Noteez.app
 macOS 릴리스 빌드를 추가 검증합니다. DMG 게시 작업은 릴리스 태그에서 실행합니다.
 
 1. `pubspec.yaml`의 앱 버전을 올리고 변경을 `main`에 반영합니다.
-2. 앱 버전과 같은 태그를 만들어 push합니다. 빌드 번호(`+8`)는 태그에서 제외합니다.
+2. 앱 버전과 같은 태그를 만들어 push합니다. 빌드 번호(`+9`)는 태그에서 제외합니다.
 
 ```bash
-# pubspec.yaml이 version: 0.0.1+8인 경우
+# pubspec.yaml이 version: 0.0.1+9인 경우
 git tag -a v0.0.1 -m "Noteez 0.0.1"
 git push origin v0.0.1
 ```
