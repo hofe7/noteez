@@ -1,0 +1,66 @@
+{
+  "embeddingPolicyVersion": 1,
+  "groupingPolicyVersion": 3,
+  "fixtureVersion": 1,
+  "fixtureSplit": "work-development",
+  "fixtureSha256": "432784dbc1d302941cd9743e2eee32b631c1151c0f9d54090b9f24db69e37fb9",
+  "mode": "multilingual-e5-small-qint8",
+  "modelSha256": "dd476dd0c2514e9b9be83aeb3853fac0763e0bdf4a71645407587d77c48a2d88",
+  "tokenizerSha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39",
+  "notes": 50,
+  "clusters": 3,
+  "predictedClusters": [
+    [
+      "work-5",
+      "work-3",
+      "work-2",
+      "work-1",
+      "work-6",
+      "work-4"
+    ],
+    [
+      "work-39",
+      "work-38",
+      "work-35",
+      "work-37"
+    ],
+    [
+      "work-16",
+      "work-18",
+      "work-13",
+      "work-14"
+    ]
+  ],
+  "inferenceSource": "matching-vector-cache",
+  "clusterPairs": {
+    "correct": 27,
+    "incorrect": 0,
+    "expected": 100,
+    "precision": 1.0,
+    "recall": 0.27
+  },
+  "baselineClusterPairs": {
+    "correct": 67,
+    "incorrect": 16,
+    "expected": 100,
+    "precision": 0.8072289156626506,
+    "recall": 0.67
+  },
+  "previousPolicyClusterPairs": {
+    "correct": 0,
+    "incorrect": 0,
+    "expected": 100,
+    "precision": null,
+    "recall": 0.0
+  },
+  "previousPolicyClusters": [],
+  "groupAdditions": {
+    "suggested": 0,
+    "correct": 0,
+    "expected": 0,
+    "precision": null,
+    "recall": null,
+    "mistakes": []
+  },
+  "groupingElapsedMs": 51
+}

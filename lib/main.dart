@@ -1,3 +1,5 @@
+import 'app_theme.dart';
+import 'windows/organize_dialog.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -89,6 +91,37 @@ Future<void> main(List<String> args) async {
 
   final m = jsonDecode(argStr) as Map<String, dynamic>;
 
+  if (m['kind'] == 'organize') {
+    windowManager.waitUntilReadyToShow(
+      const WindowOptions(
+        size: Size(460, 640),
+        minimumSize: Size(360, 540),
+        center: true,
+      ),
+      () async {
+        await windowManager.setTitle('Noteez · 연결·묶음');
+        await windowManager.show();
+      },
+    );
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: noteezTheme(),
+        home: Scaffold(
+          body: Center(
+            child: OrganizeDialog(
+              noteIds: [m['noteId'] as String],
+              onDone: () {
+                windowManager.close();
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    return;
+  }
+
   // 리포트 창
   if (m['kind'] == 'report') {
     final data = ReportData.fromJson(m['data'] as Map<String, dynamic>);
@@ -127,6 +160,8 @@ Future<void> main(List<String> args) async {
         notes: notes,
         edges: edges,
         suggestedGroups: suggestedGroups,
+        referenceSuggestions: ((m['referenceSuggestions'] as List?) ?? const [])
+            .cast<Map<String, dynamic>>(),
         groups: groups,
         notice: notice,
         modelReady: modelReady,

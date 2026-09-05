@@ -49,6 +49,9 @@ class MainController extends ChangeNotifier {
   final MarkdownPortability _markdown = MarkdownPortability();
   final List<NoteGroupRow> _noteGroups = [];
   final Map<String, GroupMemberRow> _groupMembers = {};
+  final Set<String> _groupSuggestionDismissals = {};
+  String _groupDismissalKey(String note, String group) =>
+      jsonEncode([note, group]);
 
   /// 현재 콘텐츠 버전에 대해 사용자가 숨긴 추천 pair.
   final Map<String, ({String aId, String bId, String aHash, String bHash})>
@@ -71,6 +74,13 @@ class MainController extends ChangeNotifier {
   int get indexTotal => _indexTotal;
 
   Future<void> start() async {
+    const MethodChannel('noteez/lifecycle').setMethodCallHandler((call) async {
+      if (call.method == 'flushPendingWrites') {
+        await flushPendingWrites();
+        return true;
+      }
+      throw MissingPluginException();
+    });
     await const WindowMethodChannel(
       kMainChannel,
       mode: ChannelMode.unidirectional,
@@ -80,17 +90,14 @@ class MainController extends ChangeNotifier {
     await _models.initialize();
     _conn.selectModel(_models.selectedModel);
 
-    final loaded = await _db.allActive();
-    if (loaded.isEmpty) {
-      // 첫 실행: 시드 저장.
-      for (final s in seedStickies()) {
-        await _db.upsert(s);
-        stickies.add(s);
-      }
-    } else {
-      stickies.addAll(loaded);
-    }
+    await _db.initializeWelcome();
+    stickies.addAll(await _db.allActive());
     await _reloadNoteGroups();
+    for (final dismissal in await _db.allGroupSuggestionDismissals()) {
+      _groupSuggestionDismissals.add(
+        _groupDismissalKey(dismissal.stickyId, dismissal.groupId),
+      );
+    }
 
     // 연결(엣지) 로드 → 창 뜨자마자 "🔗 연결" 표시.
     for (final l in await _db.allActiveLinks()) {
@@ -121,15 +128,7 @@ class MainController extends ChangeNotifier {
           };
     for (final s in stickies) {
       final e = stored[s.id];
-      if (e != null) {
-        _conn.seed(
-          s.id,
-          e.hash,
-          (jsonDecode(e.vec) as List)
-              .map((x) => (x as num).toDouble())
-              .toList(),
-        );
-      }
+      if (e != null) _conn.seedStored(s, e.hash, e.vec);
     }
 
     // 열린(책상 위) 스티커만, 동시에 생성. 닫힌 건 서랍에 — 검색/연결/그래프로 소환.
@@ -220,6 +219,7 @@ class MainController extends ChangeNotifier {
     for (final id in ids.skip(1)) {
       await _linkPair(anchor, id);
     }
+    _refreshConnections();
     _pushOverview();
   }
 
@@ -237,6 +237,8 @@ class MainController extends ChangeNotifier {
       (stickyId, member) =>
           !liveGroupIds.contains(member.groupId) || _stickyOf(stickyId) == null,
     );
+    notifyListeners();
+    _refreshConnections();
   }
 
   String _cleanGroupName(String value) {
@@ -263,16 +265,18 @@ class MainController extends ChangeNotifier {
                       .map((g) => g.position)
                       .reduce((a, b) => a > b ? a : b) +
                   1);
-    await _db.upsertNoteGroup(
-      id: id,
-      name: _cleanGroupName(name),
-      position: position,
-      collapsed: collapsed,
-    );
-    await _db.assignNotesToGroup(
-      id,
-      ids.where((noteId) => _stickyOf(noteId) != null),
-    );
+    await _db.transaction(() async {
+      await _db.upsertNoteGroup(
+        id: id,
+        name: _cleanGroupName(name),
+        position: position,
+        collapsed: collapsed,
+      );
+      await _db.assignNotesToGroup(
+        id,
+        ids.where((noteId) => _stickyOf(noteId) != null),
+      );
+    });
     await _reloadNoteGroups();
     _pushOverview();
     return id;
@@ -291,6 +295,7 @@ class MainController extends ChangeNotifier {
   Future<void> _unlinkPair(String a, String b) async {
     await _db.softDeleteLinkBetween(a, b);
     _graph.removeEdge(a, b);
+    _refreshConnections();
     _pushOverview();
   }
 
@@ -322,6 +327,7 @@ class MainController extends ChangeNotifier {
         await _dismissPair(ids[i], ids[j]);
       }
     }
+    _refreshConnections();
     _pushOverview();
   }
 
@@ -338,32 +344,49 @@ class MainController extends ChangeNotifier {
           s = s.copyWith(clearRemind: true);
         }
         final i = stickies.indexWhere((e) => e.id == s.id);
-        if (i != -1) {
-          stickies[i] = s;
-        } else {
-          stickies.add(s);
-        }
+        // Windows only edit existing notes. Late IPC must not resurrect deletion.
+        if (i == -1) return;
+        stickies[i] = s;
         await _db.upsert(s);
-        await _conn.index(s);
+        _queueIndex(s);
         notifyListeners();
         _pushOverview();
       case ToMain.deleteSticky:
         final id = call.arguments as String;
+        await _db.trashNote(id);
         stickies.removeWhere((e) => e.id == id);
         _windows.remove(id);
         _conn.remove(id);
         _graph.remove(id);
         _reminders.cancel(id);
-        await _db.softDelete(id);
-        await _db.deleteEmbedding(id);
-        await _db.softDeleteLinksFor(id);
-        await _db.deleteSuggestionDismissalsFor(id);
-        await _db.deleteImportOriginsFor(id);
-        await _db.deleteGroupMembershipForNote(id);
         _groupMembers.remove(id);
         _dismissals.removeWhere((_, d) => d.aId == id || d.bId == id);
+        _refreshConnections();
         notifyListeners();
         _pushOverview();
+      case ToMain.getTrash:
+        return jsonEncode([
+          for (final row in await _db.allTrashed())
+            {
+              'id': row.id,
+              'text': (jsonDecode(row.blocksJson) as List)
+                  .map((b) => Block.fromJson(b as Map<String, dynamic>).text)
+                  .where((text) => text.isNotEmpty)
+                  .join('\n'),
+              'deletedAt': row.deletedAt,
+            },
+        ]);
+      case ToMain.restoreTrashed:
+        final restored = await _db.restoreTrashed(call.arguments as String);
+        if (restored != null) {
+          stickies.removeWhere((s) => s.id == restored.id);
+          stickies.add(restored);
+          _queueIndex(restored);
+          notifyListeners();
+          _pushOverview();
+        }
+      case ToMain.permanentlyDeleteTrashed:
+        await _db.permanentlyDeleteTrashed(call.arguments as String);
       case ToMain.newSticky:
         await addSticky();
       case ToMain.getConnection:
@@ -388,6 +411,51 @@ class MainController extends ChangeNotifier {
           isDismissed: _isSuggestionDismissed,
         );
         return jsonEncode({'links': linkList, 'suggestion': sug?.toJson()});
+      case ToMain.openOrganization:
+        final noteId = call.arguments as String;
+        if (_stickyOf(noteId) == null) throw StateError('메모가 없습니다.');
+        final window = await WindowController.create(
+          WindowConfiguration(
+            hiddenAtLaunch: true,
+            arguments: jsonEncode({'kind': 'organize', 'noteId': noteId}),
+          ),
+        );
+        await window.show();
+      case ToMain.getOrganization:
+        return jsonEncode({
+          'notes': [
+            for (final note in stickies)
+              {
+                'id': note.id,
+                'label': note.preview,
+                'text': note.blocks.map((b) => b.text).join(' '),
+              },
+          ],
+          'edges': [
+            for (final edge in _graph.uniqueEdges()) {'a': edge.a, 'b': edge.b},
+          ],
+          'groups': [
+            for (final group in _noteGroups)
+              {
+                'id': group.id,
+                'name': group.name,
+                'memberIds': [
+                  for (final member in _groupMembers.values)
+                    if (member.groupId == group.id) member.stickyId,
+                ],
+              },
+          ],
+        });
+      case ToMain.restoreNoteMemberships:
+        final data =
+            jsonDecode(call.arguments as String) as Map<String, dynamic>;
+        await _db.restoreNoteMemberships(
+          (data['memberships'] as Map).cast<String, String?>(),
+          deleteGroupId: data['deleteGroupId'] as String?,
+        );
+        await _reloadNoteGroups();
+        _refreshConnections();
+        _pushOverview();
       case ToMain.linkStickies:
         final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
         final a = m['a'] as String;
@@ -441,6 +509,22 @@ class MainController extends ChangeNotifier {
       case ToMain.unlinkStickies:
         final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
         await _unlinkPair(m['a'] as String, m['b'] as String);
+      case ToMain.dismissGroupSuggestion:
+        final data =
+            jsonDecode(call.arguments as String) as Map<String, dynamic>;
+        final noteId = data['noteId'] as String;
+        final groupId = data['groupId'] as String;
+        if (_stickyOf(noteId) == null || _noteGroupOf(groupId) == null) return;
+        await _db.dismissGroupSuggestion(noteId, groupId);
+        _groupSuggestionDismissals.add(_groupDismissalKey(noteId, groupId));
+        _pushOverview();
+      case ToMain.resetGroupSuggestions:
+        final groupId = call.arguments as String;
+        await _db.resetGroupSuggestions(groupId);
+        _groupSuggestionDismissals.removeWhere(
+          (key) => (jsonDecode(key) as List)[1] == groupId,
+        );
+        _pushOverview();
       case ToMain.dismissSuggestions:
         final ids = (jsonDecode(call.arguments as String) as List)
             .cast<String>();
@@ -456,21 +540,19 @@ class MainController extends ChangeNotifier {
         _windows.remove(id);
         _pushOverview();
       case ToMain.drawerSticky:
-        // 전체 보기에서 '서랍에 넣기': 데이터 open=false + 실제 창 닫기 요청.
         final id = call.arguments as String;
+        final wc = _windows[id];
+        if (wc != null) {
+          // The window flushes its latest edits before closing. Do not swallow
+          // failures: preserving the open window is safer than losing edits.
+          await wc.invokeMethod(ToWindow.requestClose);
+        }
         final i = stickies.indexWhere((e) => e.id == id);
         if (i != -1) {
           stickies[i] = stickies[i].copyWith(open: false);
           await _db.upsert(stickies[i]);
         }
-        final wc = _windows.remove(id);
-        if (wc != null) {
-          try {
-            await wc.invokeMethod(ToWindow.requestClose);
-          } catch (_) {
-            /* 이미 닫힘 등 */
-          }
-        }
+        _windows.remove(id);
         notifyListeners();
         _pushOverview();
       case ToMain.focusSticky:
@@ -575,19 +657,19 @@ class MainController extends ChangeNotifier {
     return null;
   }
 
-  /// 승인된 연결의 연결요소(묶음) 목록. 각 멤버 {id,preview,color}, 큰 묶음 먼저.
-  /// 검색창 '둘러보기' + 회고에 사용. (그래프 알고리즘은 LinkGraph, 여기선 표현 매핑만)
-  List<List<Map<String, dynamic>>> clusters() => [
-    for (final comp in _graph.clusters())
-      [
-        for (final id in comp) _nodeOf(id),
-      ].whereType<Map<String, dynamic>>().toList(),
-  ];
-
-  /// 한 메모와 '같은 묶음'인 다른 메모들 (가까운=연결 많은 순). 없으면 빈 리스트.
-  List<Map<String, dynamic>> sameCluster(String id) => [
-    for (final cid in _graph.sameCluster(id)) _nodeOf(cid),
-  ].whereType<Map<String, dynamic>>().toList();
+  /// Search uses the same explicit group membership as the overview.
+  List<Map<String, dynamic>> sameGroup(String id) {
+    final groupId = _groupMembers[id]?.groupId;
+    if (groupId == null) return const [];
+    final members =
+        _groupMembers.values
+            .where((m) => m.groupId == groupId && m.stickyId != id)
+            .toList()
+          ..sort((a, b) => a.position.compareTo(b.position));
+    return [
+      for (final member in members) _nodeOf(member.stickyId),
+    ].whereType<Map<String, dynamic>>().toList();
+  }
 
   Future<void> addSticky() async {
     final n = stickies.length;
@@ -914,7 +996,17 @@ class MainController extends ChangeNotifier {
     );
   }
 
-  Future<void> shutdown() => _db.close();
+  Future<void> flushPendingWrites() async {
+    for (final wc in List<WindowController>.of(_windows.values)) {
+      await wc.invokeMethod(ToWindow.flushPendingWrites);
+    }
+  }
+
+  Future<void> shutdown() async {
+    await flushPendingWrites();
+    await _conn.close();
+    await _db.close();
+  }
 
   /// 모든 스티커 창을 앞으로.
   Future<void> showAll() async {
@@ -958,12 +1050,16 @@ class MainController extends ChangeNotifier {
   ///  - related: 키워드는 없지만 의미상 가까운 메모(AI 관련). 노이즈 방지로 높은 바 + 소수만.
   /// 검색(키워드/날짜 + 의미 관련). 로직은 sticky_search 에 분리, 여기선 의미 점수
   /// 공급자(임베딩 엔진)만 주입.
-  Future<SearchResult> search(String query) => searchStickies(
-    stickies,
-    query,
-    DateTime.now(),
-    (q) async => {for (final e in await _conn.rankByQuery(q)) e.key: e.value},
-  );
+  Future<SearchResult> search(String query) =>
+      searchStickies(stickies, query, DateTime.now(), (q) async {
+        try {
+          return {for (final e in await _conn.rankByQuery(q)) e.key: e.value};
+        } catch (error) {
+          _models.reportRuntimeFailure(error);
+          _pushModelState();
+          return <String, double>{};
+        }
+      });
 
   // 메인 창(검색/캡처) 투명·프레임리스를 열 때마다 재적용. (시작 시 1회만 하면
   // 숨김 상태라 안 박혀서 불투명 검정 창이 보이는 문제가 있었음.)
@@ -1011,7 +1107,7 @@ class MainController extends ChangeNotifier {
     );
     stickies.add(s);
     await _db.upsert(s);
-    await _conn.index(s);
+    _queueIndex(s);
     // 캡처한 노트는 화면에 나타나게(보이는 게 안 보이는 것보다 낫다).
     await _spawn(s);
     notifyListeners();
@@ -1026,7 +1122,7 @@ class MainController extends ChangeNotifier {
           'label': s.preview,
           'color': s.colorIndex,
           'open': s.open,
-          'updatedAt': s.updatedAt.millisecondsSinceEpoch,
+          'updatedAt': s.contentUpdatedAt.millisecondsSinceEpoch,
           'createdAt': s.createdAt.millisecondsSinceEpoch,
         },
     ];
@@ -1040,6 +1136,19 @@ class MainController extends ChangeNotifier {
     for (final members in memberships.values) {
       members.sort((a, b) => a.position.compareTo(b.position));
     }
+    final additions = _conn.groupSuggestions(
+      stickies,
+      {
+        for (final group in _noteGroups)
+          group.id: [
+            for (final member in memberships[group.id] ?? <GroupMemberRow>[])
+              member.stickyId,
+          ],
+      },
+      isDismissed: (note, group) =>
+          _groupSuggestionDismissals.contains(_groupDismissalKey(note, group)),
+      isPairDismissed: _isSuggestionDismissed,
+    );
     final groups = [
       for (final group in _noteGroups)
         {
@@ -1047,6 +1156,10 @@ class MainController extends ChangeNotifier {
           'name': group.name,
           'position': group.position,
           'collapsed': group.collapsed,
+          'suggestions': [
+            for (final addition in additions)
+              if (addition.groupId == group.id) addition.toJson(),
+          ],
           'memberIds': [
             for (final member
                 in memberships[group.id] ?? const <GroupMemberRow>[])
@@ -1056,10 +1169,8 @@ class MainController extends ChangeNotifier {
     ];
     // 사용자가 확정한 묶음은 추천에서 제외한다. 추천은 표현용 계산 결과일 뿐
     // DB/LinkGraph를 바꾸지 않으며 다음 임베딩 갱신 때 다시 계산된다.
-    final confirmedIds = {
-      ..._graph.clusters().expand((c) => c),
-      ..._groupMembers.keys,
-    };
+    // Reference links do not assign notes to a group or exclude group suggestions.
+    final confirmedIds = _groupMembers.keys.toSet();
     final suggestedGroups = [
       for (final c in _conn.suggestedClusters(
         stickies,
@@ -1076,6 +1187,14 @@ class MainController extends ChangeNotifier {
     return {
       'notes': notes,
       'edges': edges,
+      'referenceSuggestions': _conn.referenceSuggestions(
+        stickies,
+        isLinked: (a, b) => _graph.neighbors(a).contains(b),
+        isDismissed: _isSuggestionDismissed,
+        memberships: {
+          for (final m in _groupMembers.values) m.stickyId: m.groupId,
+        },
+      ),
       'groups': groups,
       'suggestedGroups': suggestedGroups,
       'modelReady': hasSelectedModel,
@@ -1155,6 +1274,32 @@ class MainController extends ChangeNotifier {
     if (_conn.modelId != null) _beginReindex();
   }
 
+  void _refreshConnections() {
+    for (final window in _windows.values) {
+      unawaited(
+        window
+            .invokeMethod(ToWindow.refreshConnections)
+            .then<void>((_) {})
+            .catchError((Object _) {}),
+      );
+    }
+  }
+
+  void _queueIndex(Sticky note) {
+    unawaited(
+      _conn
+          .index(note)
+          .then((_) {
+            _pushOverview();
+            _refreshConnections();
+          })
+          .catchError((Object error) {
+            _models.reportRuntimeFailure(error);
+            _pushModelState();
+          }),
+    );
+  }
+
   void _beginReindex() {
     final modelId = _conn.modelId;
     if (modelId == null) return;
@@ -1178,6 +1323,7 @@ class MainController extends ChangeNotifier {
           )
           .then((_) {
             if (generation == _indexGeneration) {
+              _refreshConnections();
               _pushOverview();
               _pushModelState();
             }

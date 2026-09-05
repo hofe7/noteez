@@ -103,6 +103,9 @@ class Sticky {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  /// Content changes only; moving or resizing a window does not change this.
+  final DateTime contentUpdatedAt;
+
   const Sticky({
     required this.id,
     required this.blocks,
@@ -117,7 +120,8 @@ class Sticky {
     this.remindAt,
     required this.createdAt,
     required this.updatedAt,
-  });
+    DateTime? contentUpdatedAt,
+  }) : contentUpdatedAt = contentUpdatedAt ?? updatedAt;
 
   Sticky copyWith({
     List<Block>? blocks,
@@ -132,6 +136,7 @@ class Sticky {
     int? remindAt,
     bool clearRemind = false,
     DateTime? updatedAt,
+    DateTime? contentUpdatedAt,
   }) => Sticky(
     id: id,
     blocks: blocks ?? this.blocks,
@@ -146,6 +151,11 @@ class Sticky {
     remindAt: clearRemind ? null : (remindAt ?? this.remindAt),
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    contentUpdatedAt:
+        contentUpdatedAt ??
+        (blocks != null
+            ? (updatedAt ?? DateTime.now())
+            : this.contentUpdatedAt),
   );
 
   Map<String, dynamic> toJson() => {
@@ -161,6 +171,7 @@ class Sticky {
     'remindAt': remindAt,
     'createdAt': createdAt.millisecondsSinceEpoch,
     'updatedAt': updatedAt.millisecondsSinceEpoch,
+    'contentUpdatedAt': contentUpdatedAt.millisecondsSinceEpoch,
     'blocks': blocks.map((b) => b.toJson()).toList(),
   };
 
@@ -177,6 +188,9 @@ class Sticky {
     remindAt: j['remindAt'] as int?,
     createdAt: DateTime.fromMillisecondsSinceEpoch(j['createdAt'] as int),
     updatedAt: DateTime.fromMillisecondsSinceEpoch(j['updatedAt'] as int),
+    contentUpdatedAt: DateTime.fromMillisecondsSinceEpoch(
+      (j['contentUpdatedAt'] ?? j['updatedAt']) as int,
+    ),
     blocks: (j['blocks'] as List)
         .map((e) => Block.fromJson(e as Map<String, dynamic>))
         .toList(),

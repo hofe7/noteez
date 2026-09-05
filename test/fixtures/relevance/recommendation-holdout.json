@@ -1,0 +1,314 @@
+{
+  "version": 1,
+  "split": "recommendation-holdout",
+  "notes": [
+    {
+      "id": "fresh-01",
+      "topic": "창고 실사",
+      "text": "월요일 창고 실사 회의\n바코드 수량과 선반에 실제 남은 재고를 대조한다. 파손품은 정상 재고에서 빼되 폐기 승인까지 별도 구역에 보관.",
+      "role": "unassigned",
+      "dayOffset": 0
+    },
+    {
+      "id": "fresh-02",
+      "topic": "창고 실사",
+      "text": "재고가 여섯 개 부족하다\nB동 3열의 실물 수량이 장부보다 적었다. 입출고 기록이 늦게 반영된 건지 물류 담당자에게 확인 요청.",
+      "role": "unassigned",
+      "dayOffset": 9
+    },
+    {
+      "id": "fresh-03",
+      "topic": "창고 실사",
+      "text": "실사 전 준비\n- 스캐너 충전\n- 창고 선반 번호 출력\n- 입출고 중단 시간 공지\n- 파손 재고 임시 보관함 마련",
+      "role": "unassigned",
+      "dayOffset": 18
+    },
+    {
+      "id": "fresh-04",
+      "topic": "창고 실사",
+      "text": "Stocktake follow-up\nWarehouse B aisle 3 discrepancy came from an unposted dispatch. Reconcile the inventory ledger before reopening outbound shipments.",
+      "role": "unassigned",
+      "dayOffset": 27
+    },
+    {
+      "id": "fresh-05",
+      "topic": "계약 갱신",
+      "text": "번역 업체 계약 만료가 다가온다\n10월 계약 갱신 전에 단가와 긴급 번역 가산 비용을 다시 협상하자. 지난 분기 오역 수정 횟수도 확인.",
+      "role": "unassigned",
+      "dayOffset": 0
+    },
+    {
+      "id": "fresh-06",
+      "topic": "계약 갱신",
+      "text": "법무 검토 요청 초안\n번역 용역 계약서에 검수 기한과 재작업 비용 조항 추가 부탁드립니다. 자동 연장은 빼고 매년 협의하는 방향입니다.",
+      "role": "unassigned",
+      "dayOffset": 9
+    },
+    {
+      "id": "fresh-07",
+      "topic": "계약 갱신",
+      "text": "업체 통화 기록\n번역 단가는 유지할 수 있지만 야간 긴급 작업은 별도 비용이라고 한다. 재작업은 원문 변경과 번역 오류를 구분하기로.",
+      "role": "unassigned",
+      "dayOffset": 18
+    },
+    {
+      "id": "fresh-08",
+      "topic": "계약 갱신",
+      "text": "갱신 서명 전 체크\n- 번역사 수정본 받기\n- 검수 기간 확인\n- 긴급 작업 비용 첨부\n- 계약 종료 알림 등록",
+      "role": "unassigned",
+      "dayOffset": 27
+    },
+    {
+      "id": "fresh-09",
+      "topic": "접근성 자막",
+      "text": "교육 영상 자막 아이디어\n청각장애 동료도 사내 교육을 따라갈 수 있도록 모든 영상에 자막을 붙이자. 효과음과 화자 구분도 필요.",
+      "role": "unassigned",
+      "dayOffset": 0
+    },
+    {
+      "id": "fresh-10",
+      "topic": "접근성 자막",
+      "text": "자막 검수 회의\n기계 자막은 제품명을 자주 틀린다. 사내 교육 영상의 용어 사전을 만들고 화자가 바뀌는 부분을 사람이 확인한다.",
+      "role": "unassigned",
+      "dayOffset": 9
+    },
+    {
+      "id": "fresh-11",
+      "topic": "접근성 자막",
+      "text": "영상 공개 전\n- 자막 파일 시간 맞추기\n- 화자 표시\n- 소리 없이 교육 내용 이해되는지 확인\n- 화면의 표 설명 보완",
+      "role": "unassigned",
+      "dayOffset": 18
+    },
+    {
+      "id": "fresh-12",
+      "topic": "접근성 자막",
+      "text": "Captions QA\nThe onboarding training captions drift after the second speaker. Fix timestamps and include the warning sound as text before publishing.",
+      "role": "unassigned",
+      "dayOffset": 27
+    },
+    {
+      "id": "fresh-13",
+      "topic": "보관 정책",
+      "text": "오래된 로그가 디스크를 채운다\n운영 로그 보관 기간을 90일로 정하고 이후에는 삭제하자. 감사 대상 기록은 별도 보관해야 한다.",
+      "role": "unassigned",
+      "dayOffset": 0
+    },
+    {
+      "id": "fresh-14",
+      "topic": "보관 정책",
+      "text": "보관 정책 검토 회의\n장애 분석 로그는 90일, 감사 기록은 별도 기준 적용. 삭제 작업은 먼저 dry run으로 대상 목록만 만들어 검토.",
+      "role": "unassigned",
+      "dayOffset": 9
+    },
+    {
+      "id": "fresh-15",
+      "topic": "보관 정책",
+      "text": "로그 정리 배포 순서\n- 보존 예외 목록 확인\n- 삭제 대상 수 측정\n- 드라이런 결과 승인\n- 야간 작업 후 디스크 사용량 확인",
+      "role": "unassigned",
+      "dayOffset": 18
+    },
+    {
+      "id": "fresh-16",
+      "topic": "보관 정책",
+      "text": "로그 삭제 작업 결과\n예외로 둔 감사 폴더는 그대로다. 90일 넘은 운영 기록만 정리해서 120GB를 확보했다. 다음 실행 전 대상 수가 급증하면 중단.",
+      "role": "unassigned",
+      "dayOffset": 27
+    },
+    {
+      "id": "fresh-17",
+      "topic": "번역 출시",
+      "text": "프랑스어 화면 준비\n설정 메뉴와 오류 안내를 프랑스어로 번역한다. 버튼 폭을 늘려야 할 수도 있으니 긴 번역문을 먼저 넣어보자.",
+      "role": "unassigned",
+      "dayOffset": 0
+    },
+    {
+      "id": "fresh-18",
+      "topic": "번역 출시",
+      "text": "현지화 리뷰\n프랑스어에서는 날짜 순서와 소수점 표기가 다르다. 결제 금액 표시와 설정 화면 줄바꿈을 검수 목록에 추가.",
+      "role": "unassigned",
+      "dayOffset": 9
+    },
+    {
+      "id": "fresh-19",
+      "topic": "번역 출시",
+      "text": "French release checklist\n- Import approved UI translations\n- Check long button labels\n- Verify decimal separators\n- Review French date formatting",
+      "role": "unassigned",
+      "dayOffset": 18
+    },
+    {
+      "id": "fresh-20",
+      "topic": "번역 출시",
+      "text": "언어 설정 변경 버그\n프랑스어로 전환해도 일부 오류 메시지가 한국어로 남는다. 앱을 다시 켜야 갱신되는 문자열 캐시부터 확인.",
+      "role": "unassigned",
+      "dayOffset": 27
+    },
+    {
+      "id": "fresh-21",
+      "topic": "재해 복구",
+      "text": "복구 훈련 제안\n백업이 성공했다는 로그만으로 안심하지 말자. 격리된 환경에서 데이터베이스를 실제로 복원하고 걸린 시간을 기록.",
+      "role": "unassigned",
+      "dayOffset": 0
+    },
+    {
+      "id": "fresh-22",
+      "topic": "재해 복구",
+      "text": "재해 복구 리허설 회의\n운영 트래픽은 건드리지 않는다. 지난밤 백업을 별도 서버에 복구하고 누락된 거래가 있는지 샘플 대조.",
+      "role": "unassigned",
+      "dayOffset": 9
+    },
+    {
+      "id": "fresh-23",
+      "topic": "재해 복구",
+      "text": "훈련 당일 순서\n- 격리 서버 준비\n- 백업 암호 키 확인\n- 데이터베이스 복원\n- 거래 건수 비교\n- 복구 시간 기록",
+      "role": "unassigned",
+      "dayOffset": 18
+    },
+    {
+      "id": "fresh-24",
+      "topic": "재해 복구",
+      "text": "Restore drill findings\nDatabase recovery took 47 minutes because the encryption key was missing from the drill host. Add key access verification to the recovery runbook.",
+      "role": "unassigned",
+      "dayOffset": 27
+    },
+    {
+      "id": "fresh-25",
+      "topic": "출장 준비",
+      "text": "부산 전시회 출장\n수요일 오전 기차로 내려가 고객 부스를 둘러보고 오후에 유통사 미팅. 목요일 점심 전에 올라오는 일정으로 잡자.",
+      "role": "unassigned",
+      "dayOffset": 0
+    },
+    {
+      "id": "fresh-26",
+      "topic": "출장 준비",
+      "text": "출장 예약 확인\n부산행 기차 표는 예매했다. 전시회장 근처 숙소는 취소 가능 옵션으로 예약. 유통사 담당자에게 미팅 장소 회신 필요.",
+      "role": "unassigned",
+      "dayOffset": 9
+    },
+    {
+      "id": "fresh-27",
+      "topic": "출장 준비",
+      "text": "출발 전 챙길 것\n- 전시회 입장 QR\n- 부산 유통사 담당자 전화번호\n- 명함\n- 기차표와 숙소 확인서",
+      "role": "unassigned",
+      "dayOffset": 18
+    },
+    {
+      "id": "fresh-28",
+      "topic": "출장 준비",
+      "text": "부산 현장 메모\n전시회에서 유통사 담당자와 만났다. 다음 달 샘플 배송 조건은 귀사 복귀 후 정리해서 보내기로 했다. 출장 영수증은 금요일 제출.",
+      "role": "unassigned",
+      "dayOffset": 27
+    },
+    {
+      "id": "fresh-29",
+      "topic": "설문 조사",
+      "text": "만족도 설문을 짧게\n고객 설문이 너무 길어 중간 이탈이 많다. 핵심 세 문항만 남기고 불편했던 작업은 자유 응답으로 받자.",
+      "role": "unassigned",
+      "dayOffset": 0
+    },
+    {
+      "id": "fresh-30",
+      "topic": "설문 조사",
+      "text": "설문 문항 검토\n사용 빈도, 가장 불편한 작업, 다시 쓸 의향을 묻는다. 유도 질문을 피하고 연락처 제공은 선택으로 둔다.",
+      "role": "unassigned",
+      "dayOffset": 9
+    },
+    {
+      "id": "fresh-31",
+      "topic": "설문 조사",
+      "text": "설문 발송 준비\n- 세 문항 최종 검수\n- 모바일 응답 확인\n- 연락처 선택 항목 확인\n- 중복 응답 처리 기준 정리",
+      "role": "unassigned",
+      "dayOffset": 18
+    },
+    {
+      "id": "fresh-32",
+      "topic": "설문 조사",
+      "text": "응답 중간 집계\n짧아진 고객 설문의 완료율이 올라갔다. 불편한 작업 자유 응답을 분류하되 소수 의견도 지우지 않고 별도로 기록.",
+      "role": "unassigned",
+      "dayOffset": 27
+    },
+    {
+      "id": "fresh-33",
+      "topic": "출입 카드",
+      "text": "임시 출입증 관리\n방문자가 가져간 출입 카드를 회수하지 못했다. 당일 만료되는 임시 카드로 바꾸고 안내 데스크에 반납함을 두자.",
+      "role": "unassigned",
+      "dayOffset": 0
+    },
+    {
+      "id": "fresh-34",
+      "topic": "출입 카드",
+      "text": "시설 보안 회의\n방문자 출입증은 18시에 자동 만료. 야근 방문자는 담당 직원 승인 후 연장. 분실 신고가 오면 바로 비활성화.",
+      "role": "unassigned",
+      "dayOffset": 9
+    },
+    {
+      "id": "fresh-35",
+      "topic": "출입 카드",
+      "text": "데스크 준비 사항\n- 출입 카드 반납함\n- 방문자 대장\n- 분실 카드 비활성화 안내\n- 임시 출입증 만료 시간 테스트",
+      "role": "unassigned",
+      "dayOffset": 18
+    },
+    {
+      "id": "fresh-36",
+      "topic": "출입 카드",
+      "text": "출입증 시범 운영 결과\n퇴근 후 임시 카드로 문이 열리지 않는 것을 확인했다. 반납 누락은 줄었지만 안내 데스크에서 연장 승인 절차를 어려워한다.",
+      "role": "unassigned",
+      "dayOffset": 27
+    },
+    {
+      "id": "fresh-37",
+      "topic": "테스트 불안정",
+      "text": "CI가 가끔만 실패한다\n결제 테스트 자체보다 공유 테스트 계정의 상태가 의심스럽다. 병렬 실행끼리 데이터를 덮어쓰는지 확인.",
+      "role": "unassigned",
+      "dayOffset": 0
+    },
+    {
+      "id": "fresh-38",
+      "topic": "테스트 불안정",
+      "text": "테스트 안정화 회의\n재시도만 늘리면 문제를 가린다. CI 작업마다 고유 테스트 계정을 만들고 종료 후 정리하도록 변경.",
+      "role": "unassigned",
+      "dayOffset": 9
+    },
+    {
+      "id": "fresh-39",
+      "topic": "테스트 불안정",
+      "text": "CI isolation checklist\nCreate a unique test account for every parallel job. Remove shared mutable fixtures. Capture the random seed on failure and clean up accounts afterward.",
+      "role": "unassigned",
+      "dayOffset": 18
+    },
+    {
+      "id": "fresh-40",
+      "topic": "테스트 불안정",
+      "text": "간헐 실패 수정 확인\n공유 계정을 없앤 뒤 병렬 테스트 30회가 모두 통과했다. 무작위 시드는 로그에 남겨서 다시 실패하면 같은 조건으로 재현.",
+      "role": "unassigned",
+      "dayOffset": 27
+    },
+    {
+      "id": "fresh-41",
+      "topic": "standalone-41",
+      "text": "집 화분 물 주기\n출장 가기 전에 이웃에게 열쇠를 맡기자.",
+      "role": "unassigned",
+      "dayOffset": 0
+    },
+    {
+      "id": "fresh-42",
+      "topic": "standalone-42",
+      "text": "다음 독서 모임\n이번에는 짧은 소설로 고르고 참석 인원을 확인.",
+      "role": "unassigned",
+      "dayOffset": 0
+    },
+    {
+      "id": "fresh-43",
+      "topic": "standalone-43",
+      "text": "오늘 한꺼번에 처리할 일\n창고 담당자에게 전화하고 프랑스어 검수 결과 전달. 점심에는 치과 예약.",
+      "role": "unassigned",
+      "dayOffset": 0
+    },
+    {
+      "id": "fresh-44",
+      "topic": "standalone-44",
+      "text": "운동 기록\n퇴근 후 30분 걷기. 무릎이 불편하면 쉬고 무리하지 말자.",
+      "role": "unassigned",
+      "dayOffset": 0
+    }
+  ]
+}

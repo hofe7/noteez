@@ -1,0 +1,3 @@
+e54cb53b20c8c4d1a634f4d1c7a1d914d1dc5333f134575d30d56949ca95b117  lib/automatic_clusters.dart
+Frozen before held-out evaluation. Subsequently added braces only to satisfy lint; no behavioral or threshold changes.
+70b8a49b66009b6d16fd51c6202b0b4452995709def7a2ed17b8a485530f56f9  lib/automatic_clusters.dart (lint-only final)

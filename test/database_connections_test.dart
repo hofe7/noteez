@@ -15,6 +15,63 @@ void main() {
 
   tearDown(() => db.close());
 
+  test(
+    'welcome initialization is persistent after all notes are deleted',
+    () async {
+      await db.initializeWelcome();
+      final note = (await db.allActive()).single;
+      await db.softDelete(note.id);
+      await db.initializeWelcome();
+      expect(await db.allActive(), isEmpty);
+      // Even a future permanent cleanup must not reset first-launch state.
+      await db.customStatement('DELETE FROM stickies');
+      await db.initializeWelcome();
+      expect(await db.allActive(), isEmpty);
+    },
+  );
+
+  test(
+    'window changes preserve content time through database and IPC',
+    () async {
+      final original = makeSticky(x: 0, y: 0);
+      final moved = original.copyWith(x: 200, updatedAt: DateTime(2030));
+      await db.upsert(moved);
+      final restored = (await db.allActive()).single;
+      expect(restored.updatedAt, DateTime(2030));
+      expect(
+        restored.contentUpdatedAt.millisecondsSinceEpoch,
+        original.contentUpdatedAt.millisecondsSinceEpoch,
+      );
+      expect(
+        Sticky.fromJson(restored.toJson()).contentUpdatedAt,
+        DateTime.fromMillisecondsSinceEpoch(
+          original.contentUpdatedAt.millisecondsSinceEpoch,
+        ),
+      );
+      final edited = moved.copyWith(
+        blocks: [textBlock('edited')],
+        updatedAt: DateTime(2031),
+      );
+      expect(edited.contentUpdatedAt, DateTime(2031));
+    },
+  );
+
+  test(
+    'group rejection survives text changes and can be reset independently',
+    () async {
+      await db.dismissGroupSuggestion('note', 'group-a');
+      await db.dismissGroupSuggestion('note', 'group-b');
+      await db.dismissGroupSuggestion('note', 'group-a');
+      await db.upsert(makeSticky(x: 0, y: 0));
+      expect(await db.allGroupSuggestionDismissals(), hasLength(2));
+      await db.resetGroupSuggestions('group-a');
+      expect(
+        (await db.allGroupSuggestionDismissals()).single.groupId,
+        'group-b',
+      );
+    },
+  );
+
   test('softDeleteLinkBetween removes either edge orientation', () async {
     await db.insertLink('first', 'a', 'b', 1);
     await db.insertLink('second', 'b', 'a', 2);
@@ -71,6 +128,10 @@ void main() {
 
     expect(restored.width, kDefaultStickyWidth);
     expect(restored.height, kDefaultStickyHeight);
+    expect(restored.contentUpdatedAt, restored.updatedAt);
+    await db.softDelete('legacy');
+    await db.initializeWelcome();
+    expect(await db.allActive(), isEmpty);
   });
 
   test('embedding cache is isolated by selected model', () async {
@@ -190,6 +251,72 @@ void main() {
       await db.softDeleteNoteGroup('b');
       expect(await db.allGroupMembers(), isEmpty);
       expect((await db.allActive()).single.id, 'note');
+    },
+  );
+  test(
+    'bulk organization undo restores membership and preserves later additions',
+    () async {
+      final notes = [
+        for (var i = 0; i < 3; i++)
+          makeSticky(x: 0, y: 0, blocks: [textBlock('note $i')]),
+      ];
+      for (final note in notes) {
+        await db.upsert(note);
+      }
+      await db.upsertNoteGroup(id: 'old', name: '기존', position: 0);
+      await db.upsertNoteGroup(id: 'created', name: '새 묶음', position: 1);
+      await db.assignNotesToGroup('created', notes.map((n) => n.id));
+      await db.restoreNoteMemberships({
+        notes[0].id: 'old',
+        notes[1].id: null,
+      }, deleteGroupId: 'created');
+      final members = {
+        for (final m in await db.allGroupMembers()) m.stickyId: m.groupId,
+      };
+      expect(members, {notes[0].id: 'old', notes[2].id: 'created'});
+      expect(
+        (await db.allActiveGroups()).map((g) => g.id),
+        contains('created'),
+      );
+      await db.restoreNoteMemberships({
+        notes[2].id: null,
+      }, deleteGroupId: 'created');
+      expect(
+        (await db.allActiveGroups()).map((g) => g.id),
+        isNot(contains('created')),
+      );
+      expect(await db.allActive(), hasLength(3));
+    },
+  );
+
+  test(
+    'undo rejects deleted destinations and rolls back a failed multi-note restore',
+    () async {
+      final a = makeSticky(x: 0, y: 0, blocks: [textBlock('a')]);
+      final b = makeSticky(x: 0, y: 0, blocks: [textBlock('b')]);
+      await db.upsert(a);
+      await db.upsert(b);
+      await db.upsertNoteGroup(id: 'current', name: '현재', position: 0);
+      await db.upsertNoteGroup(id: 'old', name: '이전', position: 1);
+      await db.assignNotesToGroup('current', [a.id, b.id]);
+      await expectLater(
+        db.restoreNoteMemberships({a.id: null, b.id: 'missing'}),
+        throwsStateError,
+      );
+      expect(
+        (await db.allGroupMembers()).every((m) => m.groupId == 'current'),
+        isTrue,
+      );
+      await db.customStatement(
+        "CREATE TRIGGER reject_restore BEFORE INSERT ON group_members WHEN NEW.group_id = 'old' BEGIN SELECT RAISE(ABORT, 'test failure'); END",
+      );
+      await expectLater(
+        db.restoreNoteMemberships({a.id: null, b.id: 'old'}),
+        throwsA(anything),
+      );
+      final members = await db.allGroupMembers();
+      expect(members, hasLength(2));
+      expect(members.every((m) => m.groupId == 'current'), isTrue);
     },
   );
 }

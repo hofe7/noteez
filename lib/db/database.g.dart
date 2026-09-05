@@ -152,6 +152,18 @@ class $StickiesTable extends Stickies
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _contentUpdatedAtMeta = const VerificationMeta(
+    'contentUpdatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> contentUpdatedAt = GeneratedColumn<int>(
+    'content_updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _deletedAtMeta = const VerificationMeta(
     'deletedAt',
   );
@@ -178,6 +190,7 @@ class $StickiesTable extends Stickies
     blocksJson,
     createdAt,
     updatedAt,
+    contentUpdatedAt,
     deletedAt,
   ];
   @override
@@ -275,6 +288,15 @@ class $StickiesTable extends Stickies
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('content_updated_at')) {
+      context.handle(
+        _contentUpdatedAtMeta,
+        contentUpdatedAt.isAcceptableOrUnknown(
+          data['content_updated_at']!,
+          _contentUpdatedAtMeta,
+        ),
+      );
+    }
     if (data.containsKey('deleted_at')) {
       context.handle(
         _deletedAtMeta,
@@ -342,6 +364,10 @@ class $StickiesTable extends Stickies
         DriftSqlType.int,
         data['${effectivePrefix}updated_at'],
       )!,
+      contentUpdatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}content_updated_at'],
+      )!,
       deletedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}deleted_at'],
@@ -369,6 +395,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
   final String blocksJson;
   final int createdAt;
   final int updatedAt;
+  final int contentUpdatedAt;
   final int? deletedAt;
   const StickyRow({
     required this.id,
@@ -384,6 +411,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     required this.blocksJson,
     required this.createdAt,
     required this.updatedAt,
+    required this.contentUpdatedAt,
     this.deletedAt,
   });
   @override
@@ -404,6 +432,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     map['blocks_json'] = Variable<String>(blocksJson);
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
+    map['content_updated_at'] = Variable<int>(contentUpdatedAt);
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<int>(deletedAt);
     }
@@ -427,6 +456,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
       blocksJson: Value(blocksJson),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      contentUpdatedAt: Value(contentUpdatedAt),
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(deletedAt),
@@ -452,6 +482,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
       blocksJson: serializer.fromJson<String>(json['blocksJson']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      contentUpdatedAt: serializer.fromJson<int>(json['contentUpdatedAt']),
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
     );
   }
@@ -472,6 +503,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
       'blocksJson': serializer.toJson<String>(blocksJson),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
+      'contentUpdatedAt': serializer.toJson<int>(contentUpdatedAt),
       'deletedAt': serializer.toJson<int?>(deletedAt),
     };
   }
@@ -490,6 +522,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     String? blocksJson,
     int? createdAt,
     int? updatedAt,
+    int? contentUpdatedAt,
     Value<int?> deletedAt = const Value.absent(),
   }) => StickyRow(
     id: id ?? this.id,
@@ -505,6 +538,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     blocksJson: blocksJson ?? this.blocksJson,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    contentUpdatedAt: contentUpdatedAt ?? this.contentUpdatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
   );
   StickyRow copyWithCompanion(StickiesCompanion data) {
@@ -526,6 +560,9 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
           : this.blocksJson,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      contentUpdatedAt: data.contentUpdatedAt.present
+          ? data.contentUpdatedAt.value
+          : this.contentUpdatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
   }
@@ -546,6 +583,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
           ..write('blocksJson: $blocksJson, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('contentUpdatedAt: $contentUpdatedAt, ')
           ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
@@ -566,6 +604,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
     blocksJson,
     createdAt,
     updatedAt,
+    contentUpdatedAt,
     deletedAt,
   );
   @override
@@ -585,6 +624,7 @@ class StickyRow extends DataClass implements Insertable<StickyRow> {
           other.blocksJson == this.blocksJson &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
+          other.contentUpdatedAt == this.contentUpdatedAt &&
           other.deletedAt == this.deletedAt);
 }
 
@@ -602,6 +642,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
   final Value<String> blocksJson;
   final Value<int> createdAt;
   final Value<int> updatedAt;
+  final Value<int> contentUpdatedAt;
   final Value<int?> deletedAt;
   final Value<int> rowid;
   const StickiesCompanion({
@@ -618,6 +659,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     this.blocksJson = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.contentUpdatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -635,6 +677,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     required String blocksJson,
     required int createdAt,
     required int updatedAt,
+    this.contentUpdatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -658,6 +701,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     Expression<String>? blocksJson,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
+    Expression<int>? contentUpdatedAt,
     Expression<int>? deletedAt,
     Expression<int>? rowid,
   }) {
@@ -675,6 +719,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
       if (blocksJson != null) 'blocks_json': blocksJson,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (contentUpdatedAt != null) 'content_updated_at': contentUpdatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -694,6 +739,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     Value<String>? blocksJson,
     Value<int>? createdAt,
     Value<int>? updatedAt,
+    Value<int>? contentUpdatedAt,
     Value<int?>? deletedAt,
     Value<int>? rowid,
   }) {
@@ -711,6 +757,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
       blocksJson: blocksJson ?? this.blocksJson,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      contentUpdatedAt: contentUpdatedAt ?? this.contentUpdatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -758,6 +805,9 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<int>(updatedAt.value);
     }
+    if (contentUpdatedAt.present) {
+      map['content_updated_at'] = Variable<int>(contentUpdatedAt.value);
+    }
     if (deletedAt.present) {
       map['deleted_at'] = Variable<int>(deletedAt.value);
     }
@@ -783,6 +833,7 @@ class StickiesCompanion extends UpdateCompanion<StickyRow> {
           ..write('blocksJson: $blocksJson, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('contentUpdatedAt: $contentUpdatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -2959,6 +3010,442 @@ class GroupMembersCompanion extends UpdateCompanion<GroupMemberRow> {
   }
 }
 
+class $AppSettingsTable extends AppSettings
+    with TableInfo<$AppSettingsTable, AppSetting> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AppSettingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+    'value',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [key, value];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'app_settings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AppSetting> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+        _valueMeta,
+        value.isAcceptableOrUnknown(data['value']!, _valueMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_valueMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  AppSetting map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AppSetting(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      value: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}value'],
+      )!,
+    );
+  }
+
+  @override
+  $AppSettingsTable createAlias(String alias) {
+    return $AppSettingsTable(attachedDatabase, alias);
+  }
+}
+
+class AppSetting extends DataClass implements Insertable<AppSetting> {
+  final String key;
+  final String value;
+  const AppSetting({required this.key, required this.value});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    map['value'] = Variable<String>(value);
+    return map;
+  }
+
+  AppSettingsCompanion toCompanion(bool nullToAbsent) {
+    return AppSettingsCompanion(key: Value(key), value: Value(value));
+  }
+
+  factory AppSetting.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AppSetting(
+      key: serializer.fromJson<String>(json['key']),
+      value: serializer.fromJson<String>(json['value']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'value': serializer.toJson<String>(value),
+    };
+  }
+
+  AppSetting copyWith({String? key, String? value}) =>
+      AppSetting(key: key ?? this.key, value: value ?? this.value);
+  AppSetting copyWithCompanion(AppSettingsCompanion data) {
+    return AppSetting(
+      key: data.key.present ? data.key.value : this.key,
+      value: data.value.present ? data.value.value : this.value,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AppSetting(')
+          ..write('key: $key, ')
+          ..write('value: $value')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, value);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AppSetting &&
+          other.key == this.key &&
+          other.value == this.value);
+}
+
+class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
+  final Value<String> key;
+  final Value<String> value;
+  final Value<int> rowid;
+  const AppSettingsCompanion({
+    this.key = const Value.absent(),
+    this.value = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  AppSettingsCompanion.insert({
+    required String key,
+    required String value,
+    this.rowid = const Value.absent(),
+  }) : key = Value(key),
+       value = Value(value);
+  static Insertable<AppSetting> custom({
+    Expression<String>? key,
+    Expression<String>? value,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (value != null) 'value': value,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  AppSettingsCompanion copyWith({
+    Value<String>? key,
+    Value<String>? value,
+    Value<int>? rowid,
+  }) {
+    return AppSettingsCompanion(
+      key: key ?? this.key,
+      value: value ?? this.value,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AppSettingsCompanion(')
+          ..write('key: $key, ')
+          ..write('value: $value, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $GroupSuggestionDismissalsTable extends GroupSuggestionDismissals
+    with TableInfo<$GroupSuggestionDismissalsTable, GroupSuggestionDismissal> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $GroupSuggestionDismissalsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _stickyIdMeta = const VerificationMeta(
+    'stickyId',
+  );
+  @override
+  late final GeneratedColumn<String> stickyId = GeneratedColumn<String>(
+    'sticky_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _groupIdMeta = const VerificationMeta(
+    'groupId',
+  );
+  @override
+  late final GeneratedColumn<String> groupId = GeneratedColumn<String>(
+    'group_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [stickyId, groupId];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'group_suggestion_dismissals';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<GroupSuggestionDismissal> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('sticky_id')) {
+      context.handle(
+        _stickyIdMeta,
+        stickyId.isAcceptableOrUnknown(data['sticky_id']!, _stickyIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_stickyIdMeta);
+    }
+    if (data.containsKey('group_id')) {
+      context.handle(
+        _groupIdMeta,
+        groupId.isAcceptableOrUnknown(data['group_id']!, _groupIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_groupIdMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {stickyId, groupId};
+  @override
+  GroupSuggestionDismissal map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return GroupSuggestionDismissal(
+      stickyId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sticky_id'],
+      )!,
+      groupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_id'],
+      )!,
+    );
+  }
+
+  @override
+  $GroupSuggestionDismissalsTable createAlias(String alias) {
+    return $GroupSuggestionDismissalsTable(attachedDatabase, alias);
+  }
+}
+
+class GroupSuggestionDismissal extends DataClass
+    implements Insertable<GroupSuggestionDismissal> {
+  final String stickyId;
+  final String groupId;
+  const GroupSuggestionDismissal({
+    required this.stickyId,
+    required this.groupId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['sticky_id'] = Variable<String>(stickyId);
+    map['group_id'] = Variable<String>(groupId);
+    return map;
+  }
+
+  GroupSuggestionDismissalsCompanion toCompanion(bool nullToAbsent) {
+    return GroupSuggestionDismissalsCompanion(
+      stickyId: Value(stickyId),
+      groupId: Value(groupId),
+    );
+  }
+
+  factory GroupSuggestionDismissal.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return GroupSuggestionDismissal(
+      stickyId: serializer.fromJson<String>(json['stickyId']),
+      groupId: serializer.fromJson<String>(json['groupId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'stickyId': serializer.toJson<String>(stickyId),
+      'groupId': serializer.toJson<String>(groupId),
+    };
+  }
+
+  GroupSuggestionDismissal copyWith({String? stickyId, String? groupId}) =>
+      GroupSuggestionDismissal(
+        stickyId: stickyId ?? this.stickyId,
+        groupId: groupId ?? this.groupId,
+      );
+  GroupSuggestionDismissal copyWithCompanion(
+    GroupSuggestionDismissalsCompanion data,
+  ) {
+    return GroupSuggestionDismissal(
+      stickyId: data.stickyId.present ? data.stickyId.value : this.stickyId,
+      groupId: data.groupId.present ? data.groupId.value : this.groupId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GroupSuggestionDismissal(')
+          ..write('stickyId: $stickyId, ')
+          ..write('groupId: $groupId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(stickyId, groupId);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is GroupSuggestionDismissal &&
+          other.stickyId == this.stickyId &&
+          other.groupId == this.groupId);
+}
+
+class GroupSuggestionDismissalsCompanion
+    extends UpdateCompanion<GroupSuggestionDismissal> {
+  final Value<String> stickyId;
+  final Value<String> groupId;
+  final Value<int> rowid;
+  const GroupSuggestionDismissalsCompanion({
+    this.stickyId = const Value.absent(),
+    this.groupId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  GroupSuggestionDismissalsCompanion.insert({
+    required String stickyId,
+    required String groupId,
+    this.rowid = const Value.absent(),
+  }) : stickyId = Value(stickyId),
+       groupId = Value(groupId);
+  static Insertable<GroupSuggestionDismissal> custom({
+    Expression<String>? stickyId,
+    Expression<String>? groupId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (stickyId != null) 'sticky_id': stickyId,
+      if (groupId != null) 'group_id': groupId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  GroupSuggestionDismissalsCompanion copyWith({
+    Value<String>? stickyId,
+    Value<String>? groupId,
+    Value<int>? rowid,
+  }) {
+    return GroupSuggestionDismissalsCompanion(
+      stickyId: stickyId ?? this.stickyId,
+      groupId: groupId ?? this.groupId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (stickyId.present) {
+      map['sticky_id'] = Variable<String>(stickyId.value);
+    }
+    if (groupId.present) {
+      map['group_id'] = Variable<String>(groupId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GroupSuggestionDismissalsCompanion(')
+          ..write('stickyId: $stickyId, ')
+          ..write('groupId: $groupId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2970,6 +3457,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ImportOriginsTable importOrigins = $ImportOriginsTable(this);
   late final $NoteGroupsTable noteGroups = $NoteGroupsTable(this);
   late final $GroupMembersTable groupMembers = $GroupMembersTable(this);
+  late final $AppSettingsTable appSettings = $AppSettingsTable(this);
+  late final $GroupSuggestionDismissalsTable groupSuggestionDismissals =
+      $GroupSuggestionDismissalsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2982,6 +3472,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     importOrigins,
     noteGroups,
     groupMembers,
+    appSettings,
+    groupSuggestionDismissals,
   ];
 }
 
@@ -3000,6 +3492,7 @@ typedef $$StickiesTableCreateCompanionBuilder =
       required String blocksJson,
       required int createdAt,
       required int updatedAt,
+      Value<int> contentUpdatedAt,
       Value<int?> deletedAt,
       Value<int> rowid,
     });
@@ -3018,6 +3511,7 @@ typedef $$StickiesTableUpdateCompanionBuilder =
       Value<String> blocksJson,
       Value<int> createdAt,
       Value<int> updatedAt,
+      Value<int> contentUpdatedAt,
       Value<int?> deletedAt,
       Value<int> rowid,
     });
@@ -3093,6 +3587,11 @@ class $$StickiesTableFilterComposer
 
   ColumnFilters<int> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get contentUpdatedAt => $composableBuilder(
+    column: $table.contentUpdatedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3176,6 +3675,11 @@ class $$StickiesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get contentUpdatedAt => $composableBuilder(
+    column: $table.contentUpdatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get deletedAt => $composableBuilder(
     column: $table.deletedAt,
     builder: (column) => ColumnOrderings(column),
@@ -3234,6 +3738,11 @@ class $$StickiesTableAnnotationComposer
   GeneratedColumn<int> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 
+  GeneratedColumn<int> get contentUpdatedAt => $composableBuilder(
+    column: $table.contentUpdatedAt,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get deletedAt =>
       $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 }
@@ -3279,6 +3788,7 @@ class $$StickiesTableTableManager
                 Value<String> blocksJson = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
+                Value<int> contentUpdatedAt = const Value.absent(),
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => StickiesCompanion(
@@ -3295,6 +3805,7 @@ class $$StickiesTableTableManager
                 blocksJson: blocksJson,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                contentUpdatedAt: contentUpdatedAt,
                 deletedAt: deletedAt,
                 rowid: rowid,
               ),
@@ -3313,6 +3824,7 @@ class $$StickiesTableTableManager
                 required String blocksJson,
                 required int createdAt,
                 required int updatedAt,
+                Value<int> contentUpdatedAt = const Value.absent(),
                 Value<int?> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => StickiesCompanion.insert(
@@ -3329,6 +3841,7 @@ class $$StickiesTableTableManager
                 blocksJson: blocksJson,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                contentUpdatedAt: contentUpdatedAt,
                 deletedAt: deletedAt,
                 rowid: rowid,
               ),
@@ -4569,6 +5082,307 @@ typedef $$GroupMembersTableProcessedTableManager =
       GroupMemberRow,
       PrefetchHooks Function()
     >;
+typedef $$AppSettingsTableCreateCompanionBuilder =
+    AppSettingsCompanion Function({
+      required String key,
+      required String value,
+      Value<int> rowid,
+    });
+typedef $$AppSettingsTableUpdateCompanionBuilder =
+    AppSettingsCompanion Function({
+      Value<String> key,
+      Value<String> value,
+      Value<int> rowid,
+    });
+
+class $$AppSettingsTableFilterComposer
+    extends Composer<_$AppDatabase, $AppSettingsTable> {
+  $$AppSettingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AppSettingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $AppSettingsTable> {
+  $$AppSettingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AppSettingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AppSettingsTable> {
+  $$AppSettingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+}
+
+class $$AppSettingsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AppSettingsTable,
+          AppSetting,
+          $$AppSettingsTableFilterComposer,
+          $$AppSettingsTableOrderingComposer,
+          $$AppSettingsTableAnnotationComposer,
+          $$AppSettingsTableCreateCompanionBuilder,
+          $$AppSettingsTableUpdateCompanionBuilder,
+          (
+            AppSetting,
+            BaseReferences<_$AppDatabase, $AppSettingsTable, AppSetting>,
+          ),
+          AppSetting,
+          PrefetchHooks Function()
+        > {
+  $$AppSettingsTableTableManager(_$AppDatabase db, $AppSettingsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AppSettingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AppSettingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AppSettingsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<String> value = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => AppSettingsCompanion(key: key, value: value, rowid: rowid),
+          createCompanionCallback:
+              ({
+                required String key,
+                required String value,
+                Value<int> rowid = const Value.absent(),
+              }) => AppSettingsCompanion.insert(
+                key: key,
+                value: value,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AppSettingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AppSettingsTable,
+      AppSetting,
+      $$AppSettingsTableFilterComposer,
+      $$AppSettingsTableOrderingComposer,
+      $$AppSettingsTableAnnotationComposer,
+      $$AppSettingsTableCreateCompanionBuilder,
+      $$AppSettingsTableUpdateCompanionBuilder,
+      (
+        AppSetting,
+        BaseReferences<_$AppDatabase, $AppSettingsTable, AppSetting>,
+      ),
+      AppSetting,
+      PrefetchHooks Function()
+    >;
+typedef $$GroupSuggestionDismissalsTableCreateCompanionBuilder =
+    GroupSuggestionDismissalsCompanion Function({
+      required String stickyId,
+      required String groupId,
+      Value<int> rowid,
+    });
+typedef $$GroupSuggestionDismissalsTableUpdateCompanionBuilder =
+    GroupSuggestionDismissalsCompanion Function({
+      Value<String> stickyId,
+      Value<String> groupId,
+      Value<int> rowid,
+    });
+
+class $$GroupSuggestionDismissalsTableFilterComposer
+    extends Composer<_$AppDatabase, $GroupSuggestionDismissalsTable> {
+  $$GroupSuggestionDismissalsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get stickyId => $composableBuilder(
+    column: $table.stickyId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$GroupSuggestionDismissalsTableOrderingComposer
+    extends Composer<_$AppDatabase, $GroupSuggestionDismissalsTable> {
+  $$GroupSuggestionDismissalsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get stickyId => $composableBuilder(
+    column: $table.stickyId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$GroupSuggestionDismissalsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $GroupSuggestionDismissalsTable> {
+  $$GroupSuggestionDismissalsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get stickyId =>
+      $composableBuilder(column: $table.stickyId, builder: (column) => column);
+
+  GeneratedColumn<String> get groupId =>
+      $composableBuilder(column: $table.groupId, builder: (column) => column);
+}
+
+class $$GroupSuggestionDismissalsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $GroupSuggestionDismissalsTable,
+          GroupSuggestionDismissal,
+          $$GroupSuggestionDismissalsTableFilterComposer,
+          $$GroupSuggestionDismissalsTableOrderingComposer,
+          $$GroupSuggestionDismissalsTableAnnotationComposer,
+          $$GroupSuggestionDismissalsTableCreateCompanionBuilder,
+          $$GroupSuggestionDismissalsTableUpdateCompanionBuilder,
+          (
+            GroupSuggestionDismissal,
+            BaseReferences<
+              _$AppDatabase,
+              $GroupSuggestionDismissalsTable,
+              GroupSuggestionDismissal
+            >,
+          ),
+          GroupSuggestionDismissal,
+          PrefetchHooks Function()
+        > {
+  $$GroupSuggestionDismissalsTableTableManager(
+    _$AppDatabase db,
+    $GroupSuggestionDismissalsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$GroupSuggestionDismissalsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$GroupSuggestionDismissalsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$GroupSuggestionDismissalsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> stickyId = const Value.absent(),
+                Value<String> groupId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GroupSuggestionDismissalsCompanion(
+                stickyId: stickyId,
+                groupId: groupId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String stickyId,
+                required String groupId,
+                Value<int> rowid = const Value.absent(),
+              }) => GroupSuggestionDismissalsCompanion.insert(
+                stickyId: stickyId,
+                groupId: groupId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$GroupSuggestionDismissalsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $GroupSuggestionDismissalsTable,
+      GroupSuggestionDismissal,
+      $$GroupSuggestionDismissalsTableFilterComposer,
+      $$GroupSuggestionDismissalsTableOrderingComposer,
+      $$GroupSuggestionDismissalsTableAnnotationComposer,
+      $$GroupSuggestionDismissalsTableCreateCompanionBuilder,
+      $$GroupSuggestionDismissalsTableUpdateCompanionBuilder,
+      (
+        GroupSuggestionDismissal,
+        BaseReferences<
+          _$AppDatabase,
+          $GroupSuggestionDismissalsTable,
+          GroupSuggestionDismissal
+        >,
+      ),
+      GroupSuggestionDismissal,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -4587,4 +5401,11 @@ class $AppDatabaseManager {
       $$NoteGroupsTableTableManager(_db, _db.noteGroups);
   $$GroupMembersTableTableManager get groupMembers =>
       $$GroupMembersTableTableManager(_db, _db.groupMembers);
+  $$AppSettingsTableTableManager get appSettings =>
+      $$AppSettingsTableTableManager(_db, _db.appSettings);
+  $$GroupSuggestionDismissalsTableTableManager get groupSuggestionDismissals =>
+      $$GroupSuggestionDismissalsTableTableManager(
+        _db,
+        _db.groupSuggestionDismissals,
+      );
 }

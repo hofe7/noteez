@@ -7,6 +7,7 @@ import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:tray_manager/tray_manager.dart';
 
 import 'main_controller.dart';
+import 'file_dialog_host.dart';
 
 /// 메뉴바 아이콘 + 글로벌 핫키. 임시 컨트롤 창을 대체한다.
 /// ⌘⇧N 새 메모 / ⌘⇧S 모든 스티커 보이기.
@@ -141,7 +142,9 @@ class MenubarController with TrayListener {
 
   Future<void> _importFiles() async {
     try {
-      final result = await mainController.importMarkdownFiles();
+      final result = await fileDialogHost.run(
+        mainController.importMarkdownFiles,
+      );
       if (result != null) {
         await _flashStatus(
           'Markdown ${result.imported}개 가져옴'
@@ -160,7 +163,9 @@ class MenubarController with TrayListener {
 
   Future<void> _importFolder() async {
     try {
-      final result = await mainController.importMarkdownFolder();
+      final result = await fileDialogHost.run(
+        mainController.importMarkdownFolder,
+      );
       if (result != null) {
         await _flashStatus(
           'Markdown ${result.imported}개 가져옴'
@@ -179,7 +184,7 @@ class MenubarController with TrayListener {
 
   Future<void> _importNotionZip() async {
     try {
-      final result = await mainController.importNotionZip();
+      final result = await fileDialogHost.run(mainController.importNotionZip);
       if (result != null) {
         await _flashStatus(
           'Notion ${result.imported}개 가져옴'
@@ -198,7 +203,7 @@ class MenubarController with TrayListener {
 
   Future<void> _exportAll() async {
     try {
-      final result = await mainController.exportAllMarkdown();
+      final result = await fileDialogHost.run(mainController.exportAllMarkdown);
       if (result == null) return;
       await Process.run('open', [result.directoryPath]);
       await _flashStatus('Markdown ${result.noteCount}개 내보냄');
@@ -210,7 +215,7 @@ class MenubarController with TrayListener {
 
   Future<void> _exportBackup() async {
     try {
-      final result = await mainController.exportBackup();
+      final result = await fileDialogHost.run(mainController.exportBackup);
       if (result == null) return;
       await _flashStatus(
         '메모 ${result.noteCount}개 · 이미지 ${result.imageCount}개 백업 완료',
@@ -223,7 +228,7 @@ class MenubarController with TrayListener {
 
   Future<void> _restoreBackup() async {
     try {
-      final result = await mainController.stageRestore();
+      final result = await fileDialogHost.run(mainController.stageRestore);
       if (result == null) return;
       await trayManager.setToolTip(
         '메모 ${result.noteCount}개 복원 준비 완료 · Noteez 재시작 중',
@@ -243,6 +248,12 @@ class MenubarController with TrayListener {
 
   Future<void> _quit() async {
     try {
+      await mainController.shutdown();
+    } catch (error) {
+      await _flashStatus('저장 실패 · 저장하지 못해 종료를 중단했어요.');
+      return;
+    }
+    try {
       await hotKeyManager.unregisterAll();
       await trayManager.destroy();
     } catch (e) {
@@ -253,9 +264,14 @@ class MenubarController with TrayListener {
 
   Future<void> _restart() async {
     try {
+      await mainController.shutdown();
+    } catch (error) {
+      await _flashStatus('저장하지 못해 재시작을 중단했어요.');
+      return;
+    }
+    try {
       await hotKeyManager.unregisterAll();
       await trayManager.destroy();
-      await mainController.shutdown();
       final executable = File(Platform.resolvedExecutable);
       final appBundle = executable.parent.parent.parent.path;
       await Process.start('/bin/sh', [

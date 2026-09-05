@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:drift/native.dart';
+import 'package:noteez/db/database.dart';
 import 'package:noteez/backup/backup_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
@@ -28,6 +30,46 @@ void main() {
   tearDown(() async {
     if (await root.exists()) await root.delete(recursive: true);
   });
+
+  test(
+    'schema 12 backup preserves content time, welcome state and group rejection',
+    () async {
+      final file = File(p.join(documents.path, 'noteez.sqlite'));
+      var db = AppDatabase.forTesting(NativeDatabase(file));
+      await db.initializeWelcome();
+      final note = (await db.allActive()).single.copyWith(
+        contentUpdatedAt: DateTime.utc(2026, 1, 2),
+      );
+      await db.upsert(note);
+      await db.upsertNoteGroup(id: 'project', name: 'Project', position: 0);
+      await db.dismissGroupSuggestion(note.id, 'project');
+      await db.close();
+      final zip = p.join(root.path, 'schema12.zip');
+      await service.createBackup(zip);
+      db = AppDatabase.forTesting(NativeDatabase(file));
+      await db.resetGroupSuggestions('project');
+      await db.softDelete(note.id);
+      await db.close();
+      await service.stageRestore(zip);
+      expect(await service.applyPendingRestore(), isTrue);
+      db = AppDatabase.forTesting(NativeDatabase(file));
+      try {
+        expect(
+          (await db.allActive()).single.contentUpdatedAt.toUtc(),
+          DateTime.utc(2026, 1, 2),
+        );
+        expect(
+          (await db.allGroupSuggestionDismissals()).single.groupId,
+          'project',
+        );
+        await db.softDelete(note.id);
+        await db.initializeWelcome();
+        expect(await db.allActive(), isEmpty);
+      } finally {
+        await db.close();
+      }
+    },
+  );
 
   test('backs up and restores notes with portable image paths', () async {
     final originalImage = File(p.join(root.path, 'outside', 'photo.png'));

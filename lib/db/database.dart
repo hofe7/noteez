@@ -7,6 +7,8 @@ import '../models/sticky.dart';
 
 part 'database.g.dart';
 
+const databaseSchemaVersion = 12;
+
 /// 스티커 행. sync 친화 설계:
 /// - id: UUID (auto-increment 안 씀)
 /// - updatedAt: 마지막 수정 (충돌 해결용)
@@ -29,6 +31,7 @@ class Stickies extends Table {
   TextColumn get blocksJson => text()();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
+  IntColumn get contentUpdatedAt => integer().withDefault(const Constant(0))();
   IntColumn get deletedAt => integer().nullable()();
 
   @override
@@ -55,7 +58,8 @@ class Embeddings extends Table {
   TextColumn get modelId =>
       text().withDefault(const Constant('legacy-bundled-e5'))();
   TextColumn get hash => text()();
-  TextColumn get vec => text()(); // JSON [double,...]
+  TextColumn get vec =>
+      text()(); // Versioned document/chunk JSON (legacy: [double,...])
 
   @override
   Set<Column> get primaryKey => {stickyId};
@@ -118,6 +122,22 @@ class GroupMembers extends Table {
   Set<Column> get primaryKey => {stickyId};
 }
 
+/// Explicit per-group rejection survives text edits until reset by the user.
+class GroupSuggestionDismissals extends Table {
+  TextColumn get stickyId => text()();
+  TextColumn get groupId => text()();
+  @override
+  Set<Column> get primaryKey => {stickyId, groupId};
+}
+
+/// Persistent installation state, included in database backups.
+class AppSettings extends Table {
+  TextColumn get key => text()();
+  TextColumn get value => text()();
+  @override
+  Set<Column> get primaryKey => {key};
+}
+
 @DriftDatabase(
   tables: [
     Stickies,
@@ -127,6 +147,8 @@ class GroupMembers extends Table {
     ImportOrigins,
     NoteGroups,
     GroupMembers,
+    AppSettings,
+    GroupSuggestionDismissals,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -134,7 +156,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => databaseSchemaVersion;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -155,8 +177,51 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(stickies, stickies.width);
         await m.addColumn(stickies, stickies.height);
       }
+      if (from < 12) {
+        await m.addColumn(stickies, stickies.contentUpdatedAt);
+        await customStatement(
+          'UPDATE stickies SET content_updated_at = updated_at',
+        );
+        await m.createTable(appSettings);
+        await m.createTable(groupSuggestionDismissals);
+        // An upgraded database has already completed first launch, even empty.
+        await into(appSettings).insert(
+          AppSettingsCompanion.insert(key: 'welcomeInitialized', value: 'true'),
+        );
+      }
     },
   );
+
+  Future<void> initializeWelcome() => transaction(() async {
+    final initialized = await (select(
+      appSettings,
+    )..where((t) => t.key.equals('welcomeInitialized'))).getSingleOrNull();
+    if (initialized != null) return;
+    final anyNote = await (select(stickies)..limit(1)).get();
+    if (anyNote.isEmpty) {
+      for (final note in seedStickies()) {
+        await upsert(note);
+      }
+    }
+    await into(appSettings).insert(
+      AppSettingsCompanion.insert(key: 'welcomeInitialized', value: 'true'),
+    );
+  });
+
+  Future<List<GroupSuggestionDismissal>> allGroupSuggestionDismissals() =>
+      select(groupSuggestionDismissals).get();
+
+  Future<void> dismissGroupSuggestion(String stickyId, String groupId) =>
+      into(groupSuggestionDismissals).insertOnConflictUpdate(
+        GroupSuggestionDismissalsCompanion.insert(
+          stickyId: stickyId,
+          groupId: groupId,
+        ),
+      );
+
+  Future<void> resetGroupSuggestions(String groupId) => (delete(
+    groupSuggestionDismissals,
+  )..where((t) => t.groupId.equals(groupId))).go();
 
   Future<List<NoteGroupRow>> allActiveGroups() =>
       (select(noteGroups)
@@ -251,6 +316,37 @@ class AppDatabase extends _$AppDatabase {
       groupMembers,
     )..where((t) => t.stickyId.isIn(uniqueIds))).go();
   }
+
+  /// Restore a multi-note move as one transaction, including undoing creation.
+  Future<void> restoreNoteMemberships(
+    Map<String, String?> previous, {
+    String? deleteGroupId,
+  }) => transaction(() async {
+    final liveGroups = (await allActiveGroups()).map((g) => g.id).toSet();
+    if (previous.values.whereType<String>().any(
+      (id) => !liveGroups.contains(id),
+    )) {
+      throw StateError('이전 묶음이 삭제되어 실행 취소할 수 없습니다.');
+    }
+    final liveNotes = (await allActive()).map((s) => s.id).toSet();
+    if (previous.keys.any((id) => !liveNotes.contains(id))) {
+      throw StateError('메모가 삭제되어 실행 취소할 수 없습니다.');
+    }
+    await removeNotesFromGroup(previous.keys);
+    for (final groupId in previous.values.whereType<String>().toSet()) {
+      await assignNotesToGroup(
+        groupId,
+        previous.keys.where((id) => previous[id] == groupId),
+      );
+    }
+    if (deleteGroupId != null) {
+      // Another window may have added notes since creation. Keep that group.
+      final remaining = await (select(
+        groupMembers,
+      )..where((t) => t.groupId.equals(deleteGroupId))).get();
+      if (remaining.isEmpty) await softDeleteNoteGroup(deleteGroupId);
+    }
+  });
 
   Future<void> deleteGroupMembershipForNote(String id) =>
       (delete(groupMembers)..where((t) => t.stickyId.equals(id))).go();
@@ -371,6 +467,7 @@ class AppDatabase extends _$AppDatabase {
         blocksJson: jsonEncode(s.blocks.map((b) => b.toJson()).toList()),
         createdAt: s.createdAt.millisecondsSinceEpoch,
         updatedAt: s.updatedAt.millisecondsSinceEpoch,
+        contentUpdatedAt: Value(s.contentUpdatedAt.millisecondsSinceEpoch),
         // Noteez Markdown round-trip으로 과거 ID를 복원할 수 있다. 기존 행이
         // tombstone이면 upsert와 함께 활성 상태로 되돌린다.
         deletedAt: const Value(null),
@@ -386,6 +483,56 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Future<List<StickyRow>> allTrashed() =>
+      (select(stickies)
+            ..where((t) => t.deletedAt.isNotNull())
+            ..orderBy([(t) => OrderingTerm.desc(t.deletedAt)]))
+          .get();
+
+  /// Delete-related changes commit together, before the UI drops the note.
+  Future<void> trashNote(String id) => transaction(() async {
+    await softDelete(id);
+    await deleteEmbedding(id);
+    await softDeleteLinksFor(id);
+    await deleteSuggestionDismissalsFor(id);
+    await deleteImportOriginsFor(id);
+    await deleteGroupMembershipForNote(id);
+  });
+
+  Future<Sticky?> restoreTrashed(String id) => transaction(() async {
+    final count =
+        await (update(
+          stickies,
+        )..where((t) => t.id.equals(id) & t.deletedAt.isNotNull())).write(
+          const StickiesCompanion(
+            deletedAt: Value(null),
+            open: Value(false),
+            remindAt: Value(null),
+          ),
+        );
+    if (count == 0) return null;
+    return _toModel(
+      await (select(stickies)..where((t) => t.id.equals(id))).getSingle(),
+    );
+  });
+
+  /// Active notes cannot be permanently removed through the trash API.
+  Future<void> permanentlyDeleteTrashed(String id) => transaction(() async {
+    final row =
+        await (select(stickies)
+              ..where((t) => t.id.equals(id) & t.deletedAt.isNotNull()))
+            .getSingleOrNull();
+    if (row == null) return;
+    await trashNote(id);
+    await (delete(
+      groupSuggestionDismissals,
+    )..where((t) => t.stickyId.equals(id))).go();
+    await (delete(
+      links,
+    )..where((t) => t.aId.equals(id) | t.bId.equals(id))).go();
+    await (delete(stickies)..where((t) => t.id.equals(id))).go();
+  });
+
   static Sticky _toModel(StickyRow r) => Sticky(
     id: r.id,
     colorIndex: r.colorIndex,
@@ -399,6 +546,7 @@ class AppDatabase extends _$AppDatabase {
     remindAt: r.remindAt,
     createdAt: DateTime.fromMillisecondsSinceEpoch(r.createdAt),
     updatedAt: DateTime.fromMillisecondsSinceEpoch(r.updatedAt),
+    contentUpdatedAt: DateTime.fromMillisecondsSinceEpoch(r.contentUpdatedAt),
     blocks: (jsonDecode(r.blocksJson) as List)
         .map((e) => Block.fromJson(e as Map<String, dynamic>))
         .toList(),

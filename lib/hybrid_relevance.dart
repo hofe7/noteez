@@ -20,6 +20,20 @@ class HybridRelevanceResult {
   final double lexicalScore;
 }
 
+/// Reusable note features; pair comparisons need not tokenize the same note again.
+class PreparedMemo {
+  const PreparedMemo(
+    this.tokens,
+    this.kinds,
+    this.hasTodos,
+    this.contentUpdatedAt,
+  );
+  final Set<String> tokens;
+  final Set<MemoKind> kinds;
+  final bool hasTodos;
+  final DateTime contentUpdatedAt;
+}
+
 /// 임베딩 하나에만 의존하지 않고 사용자가 확인할 수 있는 로컬 신호를 합친다.
 /// 네트워크나 생성형 모델 없이도 같은 프로젝트명·고유명사가 반복되는 메모는
 /// 후보가 되며, 임베딩은 표현이 달라도 의미가 가까운 경우를 보완한다.
@@ -56,17 +70,39 @@ class HybridRelevance {
     'that',
   };
 
+  static PreparedMemo prepare(Sticky note) {
+    final text = _text(note);
+    return PreparedMemo(
+      _tokens(text),
+      _kinds(text, note),
+      note.blocks.any((block) => block is TodoBlock),
+      note.contentUpdatedAt,
+    );
+  }
+
   static HybridRelevanceResult evaluate(
     Sticky a,
     Sticky b, {
     double? semanticScore,
     bool linked = false,
     bool sameGroup = false,
+  }) => evaluatePrepared(
+    prepare(a),
+    prepare(b),
+    semanticScore: semanticScore,
+    linked: linked,
+    sameGroup: sameGroup,
+  );
+
+  static HybridRelevanceResult evaluatePrepared(
+    PreparedMemo a,
+    PreparedMemo b, {
+    double? semanticScore,
+    bool linked = false,
+    bool sameGroup = false,
   }) {
-    final textA = _text(a);
-    final textB = _text(b);
-    final tokensA = _tokens(textA);
-    final tokensB = _tokens(textB);
+    final tokensA = a.tokens;
+    final tokensB = b.tokens;
     final shared = tokensA.intersection(tokensB).toList()
       ..sort((x, y) {
         final byLength = y.length.compareTo(x.length);
@@ -76,13 +112,9 @@ class HybridRelevance {
     final semantic = semanticScore == null
         ? null
         : ((semanticScore - 0.76) / 0.16).clamp(0.0, 1.0);
-    final kindsA = _kinds(textA, a);
-    final kindsB = _kinds(textB, b);
-    final sharedKinds = kindsA.intersection(kindsB);
-    final time = _timeProximity(a.updatedAt, b.updatedAt);
-    final bothTodos =
-        a.blocks.any((block) => block is TodoBlock) &&
-        b.blocks.any((block) => block is TodoBlock);
+    final sharedKinds = a.kinds.intersection(b.kinds);
+    final time = _timeProximity(a.contentUpdatedAt, b.contentUpdatedAt);
+    final bothTodos = a.hasTodos && b.hasTodos;
 
     var score = semantic == null
         ? lexical * 0.82 +

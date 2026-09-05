@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Build a release Noteez.app and package it into a drag-to-install DMG.
 #
-# Dependency-free (uses only flutter + hdiutil + osascript). Produces an
-# UNSIGNED dmg — fine for local/side distribution. For public release, sign
-# + notarize the .app BEFORE running this (see THIRD_PARTY_LICENSES.md / A-3b
-# notes). Usage:  tool/make_dmg.sh
+# Uses Flutter, codesign and hdiutil. The bundled app is ad-hoc signed;
+# this script does not perform Developer ID signing or Apple notarization.
+# Usage: tool/make_dmg.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -44,29 +43,7 @@ mkdir -p "$STAGE/Licenses"
 cp LICENSE "$STAGE/Licenses/Noteez.txt"
 cp THIRD_PARTY_LICENSES.md "$STAGE/Licenses/Third-Party.md"
 
-# Unsigned-app open instructions (no Apple Developer ID yet → Gatekeeper blocks
-# double-click on first run).
-cat > "$STAGE/여는 법.txt" <<'TXT'
-Noteez 설치 / 처음 여는 법
-===========================
-
-1. Noteez 를 Applications 폴더로 드래그하세요.
-
-2. 처음 실행할 때 "완료 / 휴지통에 버리기"만 보이면 "완료"를 누르세요.
-   이어서 시스템 설정 → 개인정보 보호 및 보안 → 보안 영역의
-   "확인 없이 열기"를 누르고, 인증 후 다시 "열기"를 누르세요.
-
-   "확인 없이 열기"가 안 보일 때의 터미널 대안:
-       xattr -dr com.apple.quarantine /Applications/Noteez.app
-       open /Applications/Noteez.app
-
-   (아직 Apple 공증을 받지 않아 처음 한 번만 필요합니다.)
-
-3. Noteez 는 메뉴바 앱입니다 — 독에 아이콘이 없어요.
-   메뉴바의 스티커 아이콘, 또는 단축키로 씁니다:
-     ⌘⇧N  새 메모      ⌘⇧Space  빠른 캡처
-     ⌘⇧K  검색         ⌘⇧G      전체 보기
-TXT
+cp docs/install-guide-ko.txt "$STAGE/여는 법.txt"
 
 echo "==> hdiutil create"
 hdiutil create -volname "$VOL" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null

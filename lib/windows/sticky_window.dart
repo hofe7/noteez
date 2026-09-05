@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../date_util.dart';
 import '../editor/note_editor.dart';
+import '../editor/pending_save.dart';
 import '../ipc.dart';
 import '../models/sticky.dart';
 import '../sticky_palette.dart';
@@ -27,7 +28,10 @@ class StickyWindowApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       color: Colors.transparent,
       theme: ThemeData(useMaterial3: true),
-      home: StickyWindow(initial: initial, focusOnOpen: focusOnOpen),
+      home: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: StickyWindow(initial: initial, focusOnOpen: focusOnOpen),
+      ),
     );
   }
 }
@@ -54,7 +58,28 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   final GlobalKey<NoteEditorState> _editorKey = GlobalKey<NoteEditorState>();
 
   late Sticky _s = widget.initial;
-  Timer? _saveTimer;
+  late final PendingSave<Sticky> _saves = PendingSave(
+    write: (note) => _main.updateSticky(note),
+    onError: _saveFailed,
+  );
+  bool _closing = false;
+
+  Future<void> _flushSaves() async {
+    try {
+      await _saves.flush();
+    } catch (error) {
+      _saveFailed(error);
+      rethrow;
+    }
+  }
+
+  void _saveFailed(Object error) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('메모를 저장하지 못했어요. 창을 닫지 말고 다시 시도해 주세요.')),
+    );
+  }
+
   Timer? _resizeTimer;
   final GlobalKey _bodyKey = GlobalKey();
   final GlobalKey _footerKey = GlobalKey();
@@ -88,10 +113,16 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
         if (call.method == ToWindow.focusEditor && mounted) {
           _editorKey.currentState?.focusEnd();
         }
-        // 전체 보기에서 '서랍에 넣기' → 메인이 상태 갱신 후 창만 닫으라고 요청.
+        // 전체 보기 보관 요청: 최신 내용을 저장한 뒤 창을 닫는다.
         if (call.method == ToWindow.requestClose) {
-          _saveTimer?.cancel();
+          await _flushSaves();
           await windowManager.close();
+        }
+        if (call.method == ToWindow.refreshConnections && mounted) {
+          await _fetchConnection();
+        }
+        if (call.method == ToWindow.flushPendingWrites) {
+          await _flushSaves();
         }
         return null;
       });
@@ -153,8 +184,8 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
       if (!mounted) return;
       setState(() {
         _links = r.links;
+        if (_suggestion?['id'] != r.suggestion?['id']) _sugExpanded = false;
         _suggestion = r.suggestion;
-        _sugExpanded = false;
       });
     } catch (_) {
       /* 연결 기능 비활성/오류 → 표시 안 함 */
@@ -184,11 +215,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
   }
 
   void _persist() {
-    _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(milliseconds: 300), () async {
-      await _main.updateSticky(_s);
-      await _fetchConnection(); // 편집 반영 후 관련 메모 갱신
-    });
+    _saves.schedule(_s);
   }
 
   void _apply(Sticky next) {
@@ -275,22 +302,39 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
 
   // 닫기(보관): 데이터 유지, 창만 닫음. 검색/연결/그래프로 다시 소환 가능.
   Future<void> _close() async {
-    _saveTimer?.cancel();
-    await _main.closeSticky(_s.id);
-    await windowManager.close();
+    if (_closing) return;
+    _closing = true;
+    try {
+      await _saves.flush();
+      await _main.closeSticky(_s.id);
+      await windowManager.close();
+    } catch (error) {
+      _saveFailed(error);
+    } finally {
+      _closing = false;
+    }
   }
 
-  // 삭제: 영구 제거(soft delete).
   Future<void> _delete() async {
-    _saveTimer?.cancel();
-    await _main.deleteSticky(_s.id);
-    await windowManager.close();
+    if (_closing) return;
+    _closing = true;
+    try {
+      // Drain in-flight writes before creating a tombstone.
+      await _saves.flush();
+      await _main.deleteSticky(_s.id);
+      _saves.dispose();
+      await windowManager.close();
+    } catch (error) {
+      _saveFailed(error);
+    } finally {
+      _closing = false;
+    }
   }
 
   @override
   void dispose() {
     windowManager.removeListener(this);
-    _saveTimer?.cancel();
+    _saves.dispose();
     _resizeTimer?.cancel();
     super.dispose();
   }
@@ -401,7 +445,33 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     );
   }
 
+  Future<void> _openOrganization() async {
+    try {
+      await _flushSaves();
+      await _main.openOrganization(_s.id);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('정리 화면을 열지 못했어요. 다시 시도해 주세요.')),
+        );
+      }
+    }
+  }
+
   List<Widget> _footerChildren() => [
+    Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: _openOrganization,
+        icon: const Icon(Icons.folder_outlined, size: 15),
+        label: const Text('연결·묶음'),
+        style: TextButton.styleFrom(
+          foregroundColor: Colors.black54,
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          textStyle: const TextStyle(fontSize: 12),
+        ),
+      ),
+    ),
     if (_s.remindAt != null) _reminderStatus(),
     if (_links.isNotEmpty) _linksWidget(),
     if (_suggestion != null) _suggestionRow(_suggestion!),
@@ -585,8 +655,8 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                   _s.pinned ? Icons.push_pin : Icons.push_pin_outlined,
                   _togglePin,
                 ),
-                _iconBtn(Icons.delete_outline, _delete),
-                _iconBtn(Icons.close, _close), // × = 닫기(보관)
+                _iconBtn(Icons.delete_outline, _delete, '휴지통으로 이동'),
+                _iconBtn(Icons.close, _close, '저장하고 보관'),
                 const SizedBox(width: 4),
               ],
             ],
@@ -611,7 +681,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                 const Icon(Icons.link, size: 13, color: Colors.black54),
                 const SizedBox(width: 5),
                 Text(
-                  '연결 ${_links.length}',
+                  '참고 메모 ${_links.length}',
                   style: const TextStyle(fontSize: 12, color: Colors.black54),
                 ),
                 Icon(
@@ -649,7 +719,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
             ),
           ),
           Tooltip(
-            message: '연결 해제',
+            message: '참고 메모에서 해제',
             child: InkWell(
               onTap: () => _removeLink(id),
               customBorder: const CircleBorder(),
@@ -683,7 +753,7 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                     children: [
                       Flexible(
                         child: Text(
-                          '관련: ${s['preview']}',
+                          '관련 메모: ${s['preview']}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -739,6 +809,11 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
                   ),
                   const SizedBox(height: 5),
                 ],
+                TextButton.icon(
+                  onPressed: () => _main.focusSticky(s['id'] as String),
+                  icon: const Icon(Icons.open_in_new, size: 14),
+                  label: const Text('메모 열기'),
+                ),
                 Text(
                   (s['full'] as String?)?.isNotEmpty == true
                       ? s['full'] as String
@@ -756,10 +831,10 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
     );
   }
 
-  // [연결] 버튼 — 스티커 톤에 맞춘 중성 회색. (쨍한 색은 파스텔이랑 안 어울림)
+  // Keep a reference without changing group membership.
   Widget _linkPill(VoidCallback onTap) {
     return Tooltip(
-      message: '연결',
+      message: '계속 참고할 메모로 유지',
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
@@ -767,12 +842,14 @@ class _StickyWindowState extends State<StickyWindow> with WindowListener {
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.06),
-            shape: BoxShape.circle,
+            borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(
-            Icons.add_link,
-            size: 14,
-            color: Colors.black.withValues(alpha: 0.55),
+          child: Text(
+            '유지',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.black.withValues(alpha: 0.55),
+            ),
           ),
         ),
       ),

@@ -1,0 +1,2 @@
+0d3be5077f1484801d5643f9e9a80df5fa89eb44e8639a9480e3cfe9d1ff3025  test/fixtures/relevance/recommendation-holdout.json
+Frozen before v3 score inspection and policy selection; synthetic, same author.

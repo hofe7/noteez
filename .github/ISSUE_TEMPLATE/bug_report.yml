@@ -1,0 +1,25 @@
+name: Bug report
+description: 동작 오류나 데이터 문제를 알려주세요.
+body:
+  - type: markdown
+    attributes:
+      value: "실제 메모·DB·백업·인증 정보를 첨부하지 마세요. 보안 취약점은 SECURITY.md를 따라 비공개로 제보해 주세요."
+  - type: input
+    id: version
+    attributes:
+      label: 앱 버전과 macOS 버전
+      placeholder: "Noteez 1.2.0 / macOS 버전 / Apple Silicon 또는 Intel"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 단계와 실제 결과
+      description: 가상 메모로 재현할 수 있는 단계와 예상 동작을 적어 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: model
+    attributes:
+      label: 모델 및 추가 정보
+      description: 추천 문제라면 모델 이름, 모델 없이도 발생하는지, 가상 메모 예제를 적어 주세요.

@@ -1,0 +1,427 @@
+{
+  "version": 1,
+  "split": "validation",
+  "description": "Synthetic validation set authored before tuning. Fifteen unseen topics; do not tune on this split.",
+  "notes": [
+    {
+      "id": "miru_accessibility-1",
+      "topic": "miru_accessibility",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "미루 접근성 점검: 화면 읽기 프로그램이 검색 버튼 이름을 읽지 못함"
+    },
+    {
+      "id": "miru_accessibility-2",
+      "topic": "miru_accessibility",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "미루 접근성 개선: 검색 버튼에 스크린리더용 레이블을 붙이기"
+    },
+    {
+      "id": "miru_accessibility-3",
+      "topic": "miru_accessibility",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "미루에서 눈으로 보지 않고 키보드만 써도 검색을 실행할 수 있어야 한다"
+    },
+    {
+      "id": "miru_accessibility-4",
+      "topic": "miru_accessibility",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Miru accessibility: name the search control for screen reader users"
+    },
+    {
+      "id": "miru_notifications-1",
+      "topic": "miru_notifications",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "미루 알림 설정: 야간에는 푸시 소리를 끄고 아침에 모아서 전달"
+    },
+    {
+      "id": "miru_notifications-2",
+      "topic": "miru_notifications",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "미루 알림 개선: 방해 금지 시간대와 푸시 발송 조건 정리"
+    },
+    {
+      "id": "miru_notifications-3",
+      "topic": "miru_notifications",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "미루 이용자가 자는 동안 반복해서 울리는 메시지를 줄이자"
+    },
+    {
+      "id": "miru_notifications-4",
+      "topic": "miru_notifications",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Miru notifications: respect quiet hours and send a morning digest"
+    },
+    {
+      "id": "suri_accessibility-1",
+      "topic": "suri_accessibility",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "수리 접근성 점검: 사내 직원용 대시보드 표의 스크린리더 읽기 순서"
+    },
+    {
+      "id": "suri_accessibility-2",
+      "topic": "suri_accessibility",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "수리 접근성 개선: 직원용 대시보드 표 머리글에 설명 붙이기"
+    },
+    {
+      "id": "suri_accessibility-3",
+      "topic": "suri_accessibility",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "수리 내부 관리 화면에서 보조 기술로 표의 각 열을 구별할 수 있게"
+    },
+    {
+      "id": "suri_accessibility-4",
+      "topic": "suri_accessibility",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Suri accessibility: announce column headers in the staff dashboard"
+    },
+    {
+      "id": "data_cleanup-1",
+      "topic": "data_cleanup",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "하람 데이터 정제: 센서 CSV에서 빠진 시각과 중복 행을 찾아 표시"
+    },
+    {
+      "id": "data_cleanup-2",
+      "topic": "data_cleanup",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "하람 센서 데이터 정제 작업: CSV 시각 형식을 통일하고 중복 제거"
+    },
+    {
+      "id": "data_cleanup-3",
+      "topic": "data_cleanup",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "하람 측정 파일에 같은 샘플이 두 번 들어 있다. 분석 전에 걸러내기"
+    },
+    {
+      "id": "data_cleanup-4",
+      "topic": "data_cleanup",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Haram dataset cleanup: deduplicate sensor readings and mark missing timestamps"
+    },
+    {
+      "id": "password_reset-1",
+      "topic": "password_reset",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "누리 비밀번호 재설정: 초기화 링크 만료 시간과 재발급 동작 확인"
+    },
+    {
+      "id": "password_reset-2",
+      "topic": "password_reset",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "누리 비밀번호 재설정 개선: 초기화 메일의 만료 안내를 명확하게"
+    },
+    {
+      "id": "password_reset-3",
+      "topic": "password_reset",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "누리 계정 암호를 잊은 사람이 오래된 이메일로 계속 시도하는 문제"
+    },
+    {
+      "id": "password_reset-4",
+      "topic": "password_reset",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Nuri password recovery: explain expired reset links and offer a new email"
+    },
+    {
+      "id": "video_edit-1",
+      "topic": "video_edit",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "다큐 영상 편집: 인터뷰 자막 싱크와 장면 전환 길이 조정"
+    },
+    {
+      "id": "video_edit-2",
+      "topic": "video_edit",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "다큐 영상 편집 작업: 인터뷰 자막이 목소리보다 늦게 나오는 부분 수정"
+    },
+    {
+      "id": "video_edit-3",
+      "topic": "video_edit",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "인터뷰 다큐에서 사람이 말하는 순간에 맞춰 글자가 뜨도록 타임라인 조절"
+    },
+    {
+      "id": "video_edit-4",
+      "topic": "video_edit",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Documentary editing: align interview captions with the spoken audio"
+    },
+    {
+      "id": "podcast_audio-1",
+      "topic": "podcast_audio",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "팟캐스트 오디오 편집: 인터뷰 배경 잡음과 진행자 음량 균형 조정"
+    },
+    {
+      "id": "podcast_audio-2",
+      "topic": "podcast_audio",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "팟캐스트 오디오 편집 작업: 인터뷰 녹음의 바람 소리 줄이기"
+    },
+    {
+      "id": "podcast_audio-3",
+      "topic": "podcast_audio",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "이번 오디오 방송에서 손님 목소리가 너무 작다. 진행자와 크기를 맞추자"
+    },
+    {
+      "id": "podcast_audio-4",
+      "topic": "podcast_audio",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Podcast mastering: reduce background noise and balance guest voice levels"
+    },
+    {
+      "id": "bread-1",
+      "topic": "bread",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "사워도우 빵 만들기: 반죽 발효 시간과 오븐 예열 기록"
+    },
+    {
+      "id": "bread-2",
+      "topic": "bread",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "사워도우 베이킹 기록: 반죽이 부푸는 속도와 실내 온도 비교"
+    },
+    {
+      "id": "bread-3",
+      "topic": "bread",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "천연 발효종으로 구운 빵이 납작하다. 반죽을 더 기다렸다 구워 보자"
+    },
+    {
+      "id": "bread-4",
+      "topic": "bread",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Sourdough baking: track dough rise and preheat the oven before scoring"
+    },
+    {
+      "id": "coffee-1",
+      "topic": "coffee",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "에스프레소 추출 실험: 원두 분쇄도와 추출 시간 기록"
+    },
+    {
+      "id": "coffee-2",
+      "topic": "coffee",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "에스프레소 추출 기록: 같은 원두로 분쇄도를 한 단계 곱게 조절"
+    },
+    {
+      "id": "coffee-3",
+      "topic": "coffee",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "커피가 너무 빨리 내려온다. 그라인더 설정을 바꿔 다시 한 잔 내려 보기"
+    },
+    {
+      "id": "coffee-4",
+      "topic": "coffee",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Espresso dialing in: adjust grind size and compare shot extraction time"
+    },
+    {
+      "id": "pet-1",
+      "topic": "pet",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "고양이 돌봄 기록: 급식기 시간과 물그릇 청소 주기 확인"
+    },
+    {
+      "id": "pet-2",
+      "topic": "pet",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "고양이 돌봄 준비: 외출 전에 급식기 사료 잔량 확인"
+    },
+    {
+      "id": "pet-3",
+      "topic": "pet",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "집을 비우는 동안 고양이가 먹을 양을 자동 급식기에 채워 두기"
+    },
+    {
+      "id": "pet-4",
+      "topic": "pet",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Cat care: refill the feeder and wash the water bowl before leaving home"
+    },
+    {
+      "id": "volunteer-1",
+      "topic": "volunteer",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "토요일 봉사 준비: 하천 쓰레기 수거 집합 장소와 장갑 챙기기"
+    },
+    {
+      "id": "volunteer-2",
+      "topic": "volunteer",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "하천 환경 봉사 일정: 쓰레기 수거 구역과 참가 인원 나누기"
+    },
+    {
+      "id": "volunteer-3",
+      "topic": "volunteer",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "동네 강가 청소에 참여할 사람들에게 쓰레기봉투 배부 장소 안내"
+    },
+    {
+      "id": "volunteer-4",
+      "topic": "volunteer",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "River cleanup volunteering: bring gloves and meet at the footbridge"
+    },
+    {
+      "id": "furniture-1",
+      "topic": "furniture",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "책상 제작 계획: 원목 상판 치수와 다리 고정 나사 규격"
+    },
+    {
+      "id": "furniture-2",
+      "topic": "furniture",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "책상 목공 작업: 원목 상판을 자르기 전에 치수 다시 재기"
+    },
+    {
+      "id": "furniture-3",
+      "topic": "furniture",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "직접 만드는 작업대가 흔들리지 않도록 다리 연결 부위를 보강"
+    },
+    {
+      "id": "furniture-4",
+      "topic": "furniture",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Desk woodworking: measure the tabletop and secure the leg brackets"
+    },
+    {
+      "id": "boardgame-1",
+      "topic": "boardgame",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "보드게임 모임 준비: 네 명이 할 게임과 규칙 설명 순서"
+    },
+    {
+      "id": "boardgame-2",
+      "topic": "boardgame",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "보드게임 모임 계획: 초보자에게 점수 계산을 예제로 설명"
+    },
+    {
+      "id": "boardgame-3",
+      "topic": "boardgame",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "주말 게임 모임에 처음 오는 사람이 있으니 연습 라운드를 한 번 진행"
+    },
+    {
+      "id": "boardgame-4",
+      "topic": "boardgame",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Board game night: teach scoring with an example before the first round"
+    },
+    {
+      "id": "language_talk-1",
+      "topic": "language_talk",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "일본어 발표 연습: 자기소개 원고와 발표 시간 재기"
+    },
+    {
+      "id": "language_talk-2",
+      "topic": "language_talk",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "일본어 발표 준비: 자기소개 문장을 자연스럽게 이어 말하기"
+    },
+    {
+      "id": "language_talk-3",
+      "topic": "language_talk",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "일본어 수업에서 앞에 나가 내 취미를 이야기할 때 볼 짧은 원고"
+    },
+    {
+      "id": "language_talk-4",
+      "topic": "language_talk",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Japanese class presentation: rehearse a short introduction about my hobbies"
+    },
+    {
+      "id": "network-1",
+      "topic": "network",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "집 와이파이 점검: 안방 신호 세기와 공유기 위치 비교"
+    },
+    {
+      "id": "network-2",
+      "topic": "network",
+      "role": "anchor",
+      "dayOffset": 5,
+      "text": "집 와이파이 개선: 공유기를 거실 중앙으로 옮겨 신호 확인"
+    },
+    {
+      "id": "network-3",
+      "topic": "network",
+      "role": "candidate",
+      "dayOffset": 40,
+      "text": "침실에서 무선 인터넷이 자꾸 끊긴다. 벽을 피해서 라우터 위치를 바꾸기"
+    },
+    {
+      "id": "network-4",
+      "topic": "network",
+      "role": "candidate",
+      "dayOffset": 100,
+      "text": "Home Wi-Fi: move the router and check bedroom signal strength"
+    }
+  ]
+}

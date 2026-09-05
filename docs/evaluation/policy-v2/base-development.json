@@ -1,0 +1,136 @@
+{
+  "groupingPolicyVersion": 2,
+  "fixtureVersion": 1,
+  "fixtureSplit": "development",
+  "fixtureSha256": "d4516612902a34e974e7529084731427c86b17a3c8bf102a815e11671802df9a",
+  "mode": "multilingual-e5-base-qint8",
+  "modelSha256": "2523551878658b305550d8759443822dbfda9ed9c8012ef2c354ba2c5b9de503",
+  "tokenizerSha256": "62c24cdc13d4c9952d63718d6c9fa4c287974249e16b7ade6d5a85e7bbb75626",
+  "notes": 100,
+  "clusters": 21,
+  "predictedClusters": [
+    [
+      "aurora_billing-2",
+      "aurora_billing-4",
+      "aurora_billing-1",
+      "aurora_billing-3",
+      "aurora_billing-5"
+    ],
+    [
+      "boram_onboarding-1",
+      "boram_onboarding-2",
+      "boram_onboarding-4",
+      "boram_onboarding-3"
+    ],
+    [
+      "cache-1",
+      "cache-2",
+      "cache-3",
+      "cache-4"
+    ],
+    [
+      "language-1",
+      "language-2",
+      "language-4",
+      "language-3"
+    ],
+    [
+      "ios_release-2",
+      "ios_release-1",
+      "ios_release-3"
+    ],
+    [
+      "backup-2",
+      "backup-1",
+      "backup-3"
+    ],
+    [
+      "business_trip-1",
+      "business_trip-2",
+      "business_trip-3"
+    ],
+    [
+      "bookclub-1",
+      "bookclub-2",
+      "bookclub-4"
+    ],
+    [
+      "conference-1",
+      "conference-2",
+      "conference-4"
+    ],
+    [
+      "camera-1",
+      "camera-2",
+      "camera-4"
+    ],
+    [
+      "hiring-2",
+      "hiring-1",
+      "hiring-4"
+    ],
+    [
+      "family_trip-1",
+      "family_trip-2"
+    ],
+    [
+      "budget-1",
+      "budget-2"
+    ],
+    [
+      "android_release-1",
+      "android_release-2"
+    ],
+    [
+      "running-1",
+      "running-2"
+    ],
+    [
+      "dental-1",
+      "dental-2"
+    ],
+    [
+      "garden-1",
+      "garden-2"
+    ],
+    [
+      "grocery-1",
+      "grocery-2"
+    ],
+    [
+      "home_move-1",
+      "home_move-2"
+    ],
+    [
+      "family_trip-3",
+      "family_trip-4"
+    ],
+    [
+      "aurora_onboarding-1",
+      "aurora_onboarding-2"
+    ]
+  ],
+  "inferenceSource": "matching-vector-cache",
+  "clusterPairs": {
+    "correct": 59,
+    "incorrect": 0,
+    "expected": 200,
+    "precision": 1.0,
+    "recall": 0.295
+  },
+  "baselineClusterPairs": {
+    "correct": 51,
+    "incorrect": 90,
+    "expected": 200,
+    "precision": 0.3617021276595745,
+    "recall": 0.255
+  },
+  "groupAdditions": {
+    "suggested": 21,
+    "correct": 21,
+    "expected": 60,
+    "precision": 1.0,
+    "recall": 0.35,
+    "mistakes": []
+  }
+}

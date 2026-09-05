@@ -302,7 +302,7 @@ class MarkdownPortability {
           noteezId: sticky.id,
           colorIndex: sticky.colorIndex,
           createdAt: sticky.createdAt,
-          updatedAt: sticky.updatedAt,
+          updatedAt: sticky.contentUpdatedAt,
           noteezGroupId: groupsBySticky[sticky.id]?.id,
           noteezGroupName: groupsBySticky[sticky.id]?.name,
         ),

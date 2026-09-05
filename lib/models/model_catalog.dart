@@ -132,8 +132,8 @@ abstract final class ModelCatalog {
     EmbeddingModel(
       id: 'multilingual-e5-base-qint8',
       name: 'Multilingual E5 Base',
-      description: '더 정교한 연결과 검색 · 메모가 많을 때 추천',
-      badge: '정확',
+      description: '더 큰 임베딩 모델 · 메모와 언어에 따라 품질 차이를 비교해 보세요',
+      badge: '대형',
       repository: 'intfloat/multilingual-e5-base',
       revision: 'd128750597153bb5987e10b1c3493a34e5a4502a',
       dimensions: 768,

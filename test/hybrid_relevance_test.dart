@@ -14,6 +14,33 @@ void main() {
     updatedAt: DateTime(2026, 9, day),
   );
 
+  test('moving old windows cannot change recommendation scores', () {
+    final a = note('a', '오로라 온보딩 업무', day: 1);
+    final b = note('b', '오로라 온보딩 개선', day: 20);
+    final moved = a.copyWith(x: 500, updatedAt: b.updatedAt);
+    expect(
+      HybridRelevance.evaluate(moved, b).score,
+      HybridRelevance.evaluate(a, b).score,
+    );
+  });
+
+  test('pair cache is invalidated when vectors and content change', () async {
+    final engine = ConnectionEngine();
+    final a = note('a', '새벽에 운동하기');
+    final b = note('b', '서버를 배포하자');
+    expect(engine.suggestedClusters([a, b]), isEmpty);
+    engine.seed(a.id, engine.contentHash(a), [1, 0]);
+    engine.seed(b.id, engine.contentHash(b), [1, 0]);
+    expect(engine.suggestedClusters([a, b]), hasLength(1));
+    expect(engine.suggestedClusters([a, b]), hasLength(1));
+    engine.seed(b.id, engine.contentHash(b), [0, 1]);
+    expect(engine.suggestedClusters([a, b]), isEmpty);
+    final changed = note('b', '새벽에 운동하기');
+    await engine.index(changed);
+    expect(engine.suggestedClusters([a, changed]), hasLength(1));
+    await engine.close();
+  });
+
   test('shared project keywords can recommend without an AI model', () {
     final a = note('a', '오로라 온보딩 업무 오류 수정');
     final b = note('b', '오로라 온보딩 업무 개선');

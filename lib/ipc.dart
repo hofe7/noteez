@@ -13,7 +13,13 @@ const String kMainChannel = 'noteez/main';
 abstract final class ToMain {
   static const String updateSticky = 'updateSticky';
   static const String deleteSticky = 'deleteSticky';
+  static const String getTrash = 'getTrash';
+  static const String restoreTrashed = 'restoreTrashed';
+  static const String permanentlyDeleteTrashed = 'permanentlyDeleteTrashed';
   static const String newSticky = 'newSticky';
+  static const String openOrganization = 'openOrganization';
+  static const String getOrganization = 'getOrganization';
+  static const String restoreNoteMemberships = 'restoreNoteMemberships';
   static const String getConnection = 'getConnection';
   static const String linkStickies = 'linkStickies';
   static const String linkGroup = 'linkGroup';
@@ -25,6 +31,8 @@ abstract final class ToMain {
   static const String setNoteGroupCollapsed = 'setNoteGroupCollapsed';
   static const String unlinkStickies = 'unlinkStickies';
   static const String dismissSuggestions = 'dismissSuggestions';
+  static const String dismissGroupSuggestion = 'dismissGroupSuggestion';
+  static const String resetGroupSuggestions = 'resetGroupSuggestions';
   static const String closeSticky = 'closeSticky';
   static const String drawerSticky = 'drawerSticky';
   static const String focusSticky = 'focusSticky';
@@ -48,6 +56,8 @@ abstract final class ToMain {
 /// 메인 → 개별 창 메서드명 (각 창의 기본 채널로 invoke).
 abstract final class ToWindow {
   static const String requestClose = 'requestClose';
+  static const String flushPendingWrites = 'flushPendingWrites';
+  static const String refreshConnections = 'refreshConnections';
   static const String focusEditor = 'focusEditor';
   static const String refresh = 'refresh';
 }
@@ -88,6 +98,16 @@ class MainChannel {
   Future<void> deleteSticky(String id) =>
       _ch.invokeMethod(ToMain.deleteSticky, id);
 
+  Future<List<Map<String, dynamic>>> getTrash() async =>
+      (jsonDecode(await _ch.invokeMethod(ToMain.getTrash) as String) as List)
+          .cast<Map<String, dynamic>>();
+
+  Future<void> restoreTrashed(String id) =>
+      _ch.invokeMethod(ToMain.restoreTrashed, id);
+
+  Future<void> permanentlyDeleteTrashed(String id) =>
+      _ch.invokeMethod(ToMain.permanentlyDeleteTrashed, id);
+
   Future<void> closeSticky(String id) =>
       _ch.invokeMethod(ToMain.closeSticky, id);
 
@@ -123,6 +143,15 @@ class MainChannel {
             }),
           )
           as String?;
+
+  Future<void> dismissGroupSuggestion(String noteId, String groupId) =>
+      _ch.invokeMethod(
+        ToMain.dismissGroupSuggestion,
+        jsonEncode({'noteId': noteId, 'groupId': groupId}),
+      );
+
+  Future<void> resetGroupSuggestions(String groupId) =>
+      _ch.invokeMethod(ToMain.resetGroupSuggestions, groupId);
 
   Future<void> renameNoteGroup(String id, String name) => _ch.invokeMethod(
     ToMain.renameNoteGroup,
@@ -205,6 +234,21 @@ class MainChannel {
 
   Future<void> restartForRestore() =>
       _ch.invokeMethod(ToMain.restartForRestore);
+
+  Future<void> openOrganization(String id) =>
+      _ch.invokeMethod(ToMain.openOrganization, id);
+
+  Future<Map<String, dynamic>> getOrganization() async =>
+      jsonDecode(await _ch.invokeMethod(ToMain.getOrganization) as String)
+          as Map<String, dynamic>;
+
+  Future<void> restoreNoteMemberships(
+    Map<String, String?> memberships, {
+    String? deleteGroupId,
+  }) => _ch.invokeMethod(
+    ToMain.restoreNoteMemberships,
+    jsonEncode({'memberships': memberships, 'deleteGroupId': deleteGroupId}),
+  );
 
   Future<ConnectionResult> getConnection(String id) async =>
       ConnectionResult.parse(await _ch.invokeMethod(ToMain.getConnection, id));

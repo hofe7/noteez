@@ -58,3 +58,6 @@ app.*.map.json
 
 # Release artifacts
 /dist/
+
+# Personal development notes and local evaluation caches (never published)
+/.local-dev/

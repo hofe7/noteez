@@ -1,0 +1,15 @@
+name: Feature request
+description: 메모를 적거나 다시 활용할 때의 불편을 알려주세요.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 어떤 상황에서 불편한가요?
+      description: 현재 작업 흐름과 원하는 결과를 설명해 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 제안하는 동작
+      description: 캡처를 복잡하게 만들지 않고 사용자 결정권을 유지하는 방법이면 좋습니다.

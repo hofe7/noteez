@@ -4,9 +4,11 @@ import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
+import 'trash_dialog.dart';
+import 'organize_dialog.dart';
+import 'reference_list.dart';
 import '../date_util.dart';
 import '../ipc.dart';
-import '../link_graph.dart';
 import '../sticky_palette.dart';
 
 /// 전체 보기: 라이브러리 창. 모든 메모(열림 + 서랍)를 묶음 + 그 외로 정리하고
@@ -17,6 +19,7 @@ class OverviewWindowApp extends StatelessWidget {
   final List<Map<String, dynamic>> edges; // {a,b}
   final List<Map<String, dynamic>> suggestedGroups; // {ids:[...],score}
   final List<Map<String, dynamic>> groups; // {id,name,collapsed,memberIds}
+  final List<Map<String, dynamic>> referenceSuggestions;
   final String? notice;
   final bool modelReady;
   final int modelIndexed;
@@ -28,6 +31,7 @@ class OverviewWindowApp extends StatelessWidget {
     required this.edges,
     required this.suggestedGroups,
     this.groups = const [],
+    this.referenceSuggestions = const [],
     this.notice,
     this.modelReady = true,
     this.modelIndexed = 0,
@@ -46,6 +50,7 @@ class OverviewWindowApp extends StatelessWidget {
         edges: edges,
         suggestedGroups: suggestedGroups,
         groups: groups,
+        referenceSuggestions: referenceSuggestions,
         notice: notice,
         modelReady: modelReady,
         modelIndexed: modelIndexed,
@@ -64,6 +69,7 @@ class OverviewWindow extends StatefulWidget {
   final List<Map<String, dynamic>> edges;
   final List<Map<String, dynamic>> suggestedGroups;
   final List<Map<String, dynamic>> groups;
+  final List<Map<String, dynamic>> referenceSuggestions;
   final String? notice;
   final bool modelReady;
   final int modelIndexed;
@@ -74,6 +80,7 @@ class OverviewWindow extends StatefulWidget {
     required this.edges,
     required this.suggestedGroups,
     this.groups = const [],
+    this.referenceSuggestions = const [],
     this.notice,
     this.modelReady = true,
     this.modelIndexed = 0,
@@ -95,13 +102,16 @@ class _OverviewWindowState extends State<OverviewWindow> {
 
   // 메인이 push 하는 최신 데이터로 갱신 (창 껐다 켤 필요 없게).
   late List<Map<String, dynamic>> _notes = widget.notes;
-  late List<Map<String, dynamic>> _edges = widget.edges;
   late List<Map<String, dynamic>> _suggestedGroups = widget.suggestedGroups;
   late List<Map<String, dynamic>> _groups = widget.groups;
   late String? _notice = widget.notice;
   late bool _modelReady = widget.modelReady;
   late int _modelIndexed = widget.modelIndexed;
   late int _modelIndexTotal = widget.modelIndexTotal;
+  bool _relations = false;
+  late List<Map<String, dynamic>> _edges = widget.edges;
+  late List<Map<String, dynamic>> _referenceSuggestions =
+      widget.referenceSuggestions;
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
 
@@ -115,7 +125,11 @@ class _OverviewWindowState extends State<OverviewWindow> {
               jsonDecode(call.arguments as String) as Map<String, dynamic>;
           setState(() {
             _notes = (m['notes'] as List).cast<Map<String, dynamic>>();
-            _edges = (m['edges'] as List).cast<Map<String, dynamic>>();
+            _edges = ((m['edges'] as List?) ?? const [])
+                .cast<Map<String, dynamic>>();
+            _referenceSuggestions =
+                ((m['referenceSuggestions'] as List?) ?? const [])
+                    .cast<Map<String, dynamic>>();
             _suggestedGroups = ((m['suggestedGroups'] as List?) ?? const [])
                 .cast<Map<String, dynamic>>();
             _groups = ((m['groups'] as List?) ?? const [])
@@ -151,35 +165,6 @@ class _OverviewWindowState extends State<OverviewWindow> {
     _Sort.created => (b['createdAt'] as int).compareTo(a['createdAt'] as int),
     _Sort.name => (a['label'] as String).compareTo(b['label'] as String),
   };
-
-  // 묶음(연결요소) + 묶인 id 집합. 그래프 알고리즘은 LinkGraph(순수, 단위테스트됨)
-  // 재사용 — 별 isolate라 edges 만 받지만 LinkGraph 는 의존성이 없어 그대로 쓴다.
-  ({List<List<Map<String, dynamic>>> clusters, Set<String> grouped}) _grouped(
-    Set<String> manuallyGrouped,
-  ) {
-    final byId = {for (final n in _notes) n['id'] as String: n};
-    final graph = LinkGraph();
-    for (final e in _edges) {
-      final a = e['a'] as String;
-      final b = e['b'] as String;
-      if (manuallyGrouped.contains(a) || manuallyGrouped.contains(b)) continue;
-      graph.addEdge(a, b);
-    }
-    final clusters = <List<Map<String, dynamic>>>[];
-    final grouped = <String>{};
-    for (final comp in graph.clusters()) {
-      // 삭제된(목록에 없는) id 제거 후 2 미만이면 묶음 아님.
-      final members = [
-        for (final id in comp) byId[id],
-      ].whereType<Map<String, dynamic>>().toList();
-      if (members.length < 2) continue;
-      grouped.addAll(members.map((m) => m['id'] as String));
-      clusters.add(members);
-    }
-    // 필터로 크기가 바뀔 수 있어 표시 기준(노드 수)으로 재정렬.
-    clusters.sort((a, b) => b.length.compareTo(a.length));
-    return (clusters: clusters, grouped: grouped);
-  }
 
   // 하이브리드 엔진이 계산한 읽기 전용 추천 묶음. 삭제된 id와 확정 묶음 id는
   // 방어적으로 한 번 더 제거한다.
@@ -245,14 +230,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
         visibleManual.add((group: group, members: members));
       }
     }
-    final g = _grouped(manualIds);
-    final suggested = _suggested({...manualIds, ...g.grouped});
-    // 필터/정렬 적용.
-    final visibleClusters = [
-      for (final c in g.clusters)
-        if (c.where(_matches).toList() case final m when m.isNotEmpty)
-          m..sort(_cmp),
-    ];
+    final suggested = _suggested(manualIds);
     final visibleSuggested = [
       for (final c in suggested.clusters)
         if (c.members.where(_matches).toList() case final m when m.isNotEmpty)
@@ -267,7 +245,6 @@ class _OverviewWindowState extends State<OverviewWindow> {
         _notes
             .where(
               (n) =>
-                  !g.grouped.contains(n['id']) &&
                   !manualIds.contains(n['id']) &&
                   !suggested.grouped.contains(n['id']) &&
                   _matches(n),
@@ -276,7 +253,6 @@ class _OverviewWindowState extends State<OverviewWindow> {
           ..sort(_cmp);
     final shown =
         visibleManual.fold<int>(0, (s, g) => s + g.members.length) +
-        visibleClusters.fold<int>(0, (s, c) => s + c.length) +
         visibleSuggested.fold<int>(0, (s, c) => s + c.members.length) +
         ungrouped.length;
 
@@ -289,8 +265,66 @@ class _OverviewWindowState extends State<OverviewWindow> {
           children: [
             _header(
               _groups.length,
-              g.clusters.length,
-              suggested.clusters.length,
+              suggested.clusters.length +
+                  _groups.fold<int>(
+                    0,
+                    (sum, group) =>
+                        sum + ((group['suggestions'] as List?)?.length ?? 0),
+                  ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
+              child: SegmentedButton<bool>(
+                showSelectedIcon: false,
+                style: ButtonStyle(
+                  side: const WidgetStatePropertyAll(
+                    BorderSide(color: AppColors.border),
+                  ),
+                  backgroundColor: WidgetStateProperty.resolveWith(
+                    (states) => states.contains(WidgetState.selected)
+                        ? AppColors.accentTint(0.12)
+                        : AppColors.fill,
+                  ),
+                  foregroundColor: WidgetStateProperty.resolveWith(
+                    (states) => states.contains(WidgetState.selected)
+                        ? AppColors.accentInk
+                        : AppColors.ink2,
+                  ),
+                  textStyle: WidgetStatePropertyAll(
+                    Theme.of(context).textTheme.labelLarge?.copyWith(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  shape: WidgetStatePropertyAll(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                  ),
+                  minimumSize: const WidgetStatePropertyAll(Size(0, 36)),
+                  padding: const WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  ),
+                ),
+                segments: const [
+                  ButtonSegment(
+                    value: false,
+                    label: Text('묶음'),
+                    icon: Icon(Icons.folder_outlined),
+                  ),
+                  ButtonSegment(
+                    value: true,
+                    label: Text('관계'),
+                    icon: Icon(Icons.link),
+                  ),
+                ],
+                selected: {_relations},
+                onSelectionChanged: (value) => setState(() {
+                  _relations = value.single;
+                  _selectionMode = false;
+                  _selectedIds.clear();
+                }),
+              ),
             ),
             _controls(),
             if (!_modelReady || _modelIndexed < _modelIndexTotal)
@@ -298,7 +332,14 @@ class _OverviewWindowState extends State<OverviewWindow> {
             if (_notice != null) _noticeBanner(),
             const Divider(height: 1, color: AppColors.hair),
             Expanded(
-              child: (shown == 0 && visibleManual.isEmpty)
+              child: _relations
+                  ? ReferenceList(
+                      notes: _notes,
+                      edges: _edges,
+                      suggestions: _referenceSuggestions,
+                      matches: _matches,
+                    )
+                  : (shown == 0 && visibleManual.isEmpty)
                   ? _empty()
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -307,14 +348,9 @@ class _OverviewWindowState extends State<OverviewWindow> {
                           _manualGroupCard(entry.group, entry.members),
                           const SizedBox(height: 14),
                         ],
-                        for (final c in visibleClusters) ...[
-                          _clusterCard(c),
-                          const SizedBox(height: 14),
-                        ],
                         for (final c in visibleSuggested) ...[
                           _clusterCard(
                             c.members,
-                            suggested: true,
                             suggestedTitle: c.title,
                             actionIds: c.ids,
                             reasons: c.reasons,
@@ -390,9 +426,21 @@ class _OverviewWindowState extends State<OverviewWindow> {
     ),
   );
 
-  Widget _header(int manualCount, int clusterCount, int suggestionCount) {
+  Widget _header(int manualCount, int suggestionCount) {
     final total = _notes.length;
     final drawer = _notes.where((n) => n['open'] != true).length;
+    final liveIds = _notes.map((n) => n['id']).toSet();
+    Set<String> pairKeys(List<Map<String, dynamic>> pairs) => {
+      for (final pair in pairs)
+        if (pair['a'] != pair['b'] &&
+            liveIds.contains(pair['a']) &&
+            liveIds.contains(pair['b']))
+          jsonEncode([pair['a'] as String, pair['b'] as String]..sort()),
+    };
+    final saved = pairKeys(_edges);
+    final relatedCount = pairKeys(
+      _referenceSuggestions,
+    ).difference(saved).length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 18, 24, 4),
       child: Column(
@@ -412,23 +460,34 @@ class _OverviewWindowState extends State<OverviewWindow> {
                 ),
               ),
               TextButton.icon(
-                onPressed: () => setState(() {
-                  _selectionMode = !_selectionMode;
-                  if (!_selectionMode) _selectedIds.clear();
-                }),
-                icon: Icon(
-                  _selectionMode
-                      ? Icons.close_rounded
-                      : Icons.checklist_rounded,
-                  size: 16,
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => const TrashDialog(),
                 ),
-                label: Text(_selectionMode ? '취소' : '선택'),
+                icon: const Icon(Icons.delete_outline, size: 16),
+                label: const Text('휴지통'),
               ),
+              if (!_relations)
+                TextButton.icon(
+                  onPressed: () => setState(() {
+                    _selectionMode = !_selectionMode;
+                    if (!_selectionMode) _selectedIds.clear();
+                  }),
+                  icon: Icon(
+                    _selectionMode
+                        ? Icons.close_rounded
+                        : Icons.checklist_rounded,
+                    size: 16,
+                  ),
+                  label: Text(_selectionMode ? '취소' : '선택'),
+                ),
             ],
           ),
           const SizedBox(height: 3),
           Text(
-            '메모 $total개 · 내 묶음 $manualCount개 · 연결 묶음 $clusterCount개 · 추천 $suggestionCount개 · 서랍 $drawer개',
+            _relations
+                ? '메모 $total개 · 참고 ${saved.length}개 · 관련 추천 $relatedCount개'
+                : '메모 $total개 · 내 묶음 $manualCount개 · 추천 $suggestionCount개 · 참고 ${saved.length}개 · 서랍 $drawer개',
             style: const TextStyle(fontSize: 12.5, color: AppColors.ink3),
           ),
         ],
@@ -473,9 +532,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              // 정렬
-              _sortMenu(),
+              if (!_relations) ...[const SizedBox(width: 10), _sortMenu()],
             ],
           ),
           const SizedBox(height: 10),
@@ -606,10 +663,11 @@ class _OverviewWindowState extends State<OverviewWindow> {
     if (uniqueIds.length < 2) return;
     final name = await _askGroupName(title: '새 묶음 만들기', initial: initialName);
     if (name == null) return;
+    final previous = {for (final id in uniqueIds) id: _groupContaining(id)};
     final groupId = await _main.createNoteGroup(name, uniqueIds);
     if (groupId != null && mounted) {
       _offerUndo('‘$name’ 묶음을 만들었어요.', () async {
-        await _main.deleteNoteGroup(groupId);
+        await _main.restoreNoteMemberships(previous, deleteGroupId: groupId);
       });
     }
     if (mounted) {
@@ -789,10 +847,17 @@ class _OverviewWindowState extends State<OverviewWindow> {
                       onSelected: (value) {
                         if (value == 'rename') _renameGroup(group);
                         if (value == 'delete') _deleteGroup(group);
+                        if (value == 'resetSuggestions') {
+                          _main.resetGroupSuggestions(id);
+                        }
                       },
                       itemBuilder: (_) => const [
                         PopupMenuItem(value: 'rename', child: Text('이름 바꾸기')),
                         PopupMenuItem(value: 'delete', child: Text('묶음 삭제')),
+                        PopupMenuItem(
+                          value: 'resetSuggestions',
+                          child: Text('숨긴 추가 추천 다시 보기'),
+                        ),
                       ],
                     ),
                   ],
@@ -802,9 +867,68 @@ class _OverviewWindowState extends State<OverviewWindow> {
             if (!collapsed) ...[
               const Divider(height: 1, color: Color(0x0D000000)),
               for (final member in members) _noteRow(member),
+              for (final suggestion
+                  in ((group['suggestions'] as List?) ?? const []))
+                _groupAddition(id, suggestion as Map<String, dynamic>),
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _groupAddition(String groupId, Map<String, dynamic> suggestion) {
+    final noteId = suggestion['noteId'] as String;
+    final notes = _notes.where(
+      (note) => note['id'] == noteId && _matches(note),
+    );
+    if (notes.isEmpty || _groupContaining(noteId) != null) {
+      return const SizedBox.shrink();
+    }
+    final note = notes.first;
+    final reasons = ((suggestion['reasons'] as List?) ?? const [])
+        .cast<String>();
+    return Container(
+      key: ValueKey('group-addition-$groupId-$noteId'),
+      color: AppColors.accentTint(0.06),
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '이 묶음에 추가할까요?',
+            style: TextStyle(fontSize: 12, color: AppColors.ink3),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () => _open(noteId),
+                  child: Text(
+                    note['label'] as String,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => _moveNote(noteId, groupId),
+                child: const Text('추가'),
+              ),
+              IconButton(
+                tooltip: '이 묶음에 추천하지 않기',
+                icon: const Icon(Icons.close_rounded, size: 16),
+                onPressed: () => _main.dismissGroupSuggestion(noteId, groupId),
+              ),
+            ],
+          ),
+          if (reasons.isNotEmpty)
+            Text(
+              reasons.join(' · '),
+              style: const TextStyle(fontSize: 11.5, color: AppColors.ink3),
+            ),
+        ],
       ),
     );
   }
@@ -817,9 +941,23 @@ class _OverviewWindowState extends State<OverviewWindow> {
         color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.hair)),
       ),
-      child: Row(
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        alignment: WrapAlignment.spaceBetween,
         children: [
-          Expanded(child: Text('${_selectedIds.length}개 선택')),
+          Text('${_selectedIds.length}개 선택'),
+          TextButton(
+            onPressed: _selectedIds.isEmpty
+                ? null
+                : () => showDialog<void>(
+                    context: context,
+                    builder: (_) =>
+                        OrganizeDialog(noteIds: _selectedIds.toList()),
+                  ),
+            child: const Text('묶음에 넣기·빼기'),
+          ),
           FilledButton.icon(
             onPressed: _selectedIds.length < 2
                 ? null
@@ -834,18 +972,15 @@ class _OverviewWindowState extends State<OverviewWindow> {
 
   Widget _clusterCard(
     List<Map<String, dynamic>> members, {
-    bool suggested = false,
     String? suggestedTitle,
     List<String> actionIds = const [],
     List<String> reasons = const [],
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: suggested ? AppColors.accentTint(0.035) : AppColors.surface,
+        color: AppColors.accentTint(0.035),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: suggested ? AppColors.accentTint(0.28) : AppColors.border,
-        ),
+        border: Border.all(color: AppColors.accentTint(0.28)),
         boxShadow: kCardShadow,
       ),
       clipBehavior: Clip.antiAlias,
@@ -856,7 +991,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
             padding: const EdgeInsets.fromLTRB(16, 12, 14, 8),
             child: Row(
               children: [
-                if (suggested) ...[
+                ...[
                   const Icon(
                     Icons.auto_awesome_rounded,
                     size: 14,
@@ -866,9 +1001,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
                 ],
                 Expanded(
                   child: Text(
-                    suggested
-                        ? '${suggestedTitle ?? members.first['label']} 관련'
-                        : '연결 · ${members.first['label']}',
+                    '${suggestedTitle ?? members.first['label']} 관련',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -879,7 +1012,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                if (suggested) ...[
+                ...[
                   Text(
                     '추천',
                     style: TextStyle(
@@ -909,7 +1042,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
               ],
             ),
           ),
-          if (suggested && reasons.isNotEmpty)
+          if (reasons.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 9),
               child: Text(

@@ -1,0 +1,24 @@
+{
+  "fixtureVersion": 1,
+  "fixtureSha256": "d4516612902a34e974e7529084731427c86b17a3c8bf102a815e11671802df9a",
+  "mode": "multilingual-e5-small-qint8",
+  "modelSha256": "dd476dd0c2514e9b9be83aeb3853fac0763e0bdf4a71645407587d77c48a2d88",
+  "tokenizerSha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39",
+  "notes": 100,
+  "clusters": 20,
+  "clusterPairs": {
+    "correct": 63,
+    "incorrect": 59,
+    "expected": 200,
+    "precision": 0.5163934426229508,
+    "recall": 0.315
+  },
+  "groupAdditions": {
+    "suggested": 25,
+    "correct": 25,
+    "expected": 60,
+    "precision": 1.0,
+    "recall": 0.4166666666666667,
+    "mistakes": []
+  }
+}

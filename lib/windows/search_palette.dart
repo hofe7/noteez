@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../app_theme.dart';
+import '../file_dialog_host.dart';
 import '../date_util.dart';
 import '../main_controller.dart';
 import '../models/sticky.dart';
@@ -213,7 +214,9 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
 
   @override
   void onWindowBlur() {
-    _hide(); // 다른 곳 클릭하면 닫힘 (Spotlight 동작)
+    // A native file panel takes focus from its parent. Hiding the parent here
+    // also hides the sheet and makes the tray action appear to do nothing.
+    if (!fileDialogHost.active) _hide();
   }
 
   Future<void> _hide() async {
@@ -560,7 +563,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   // 대상 메모와 '같은 묶음'인 메모들.
   List<Map<String, dynamic>> _relatedItems() {
     final id = _panelTargetId;
-    return id == null ? const [] : mainController.sameCluster(id);
+    return id == null ? const [] : mainController.sameGroup(id);
   }
 
   // 분할 모드: 우측 패널에 hover/선택 메모의 같은-묶음 메모.

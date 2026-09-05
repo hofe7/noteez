@@ -4,9 +4,12 @@ import desktop_multi_window
 
 class MainFlutterWindow: NSWindow {
   private static var pasteMonitor: Any?
+  static var lifecycleChannel: FlutterMethodChannel?
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
+    Self.lifecycleChannel = FlutterMethodChannel(
+      name: "noteez/lifecycle", binaryMessenger: flutterViewController.engine.binaryMessenger)
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)

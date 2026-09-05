@@ -68,7 +68,8 @@ void main() {
     expect(find.text('채용 프로세스 개선'), findsOneWidget);
     expect(find.text('개인 생활'), findsOneWidget);
     expect(find.textContaining('키워드가 겹쳐요'), findsOneWidget);
-    expect(find.text('연결 · 회의 · 환불 고객 인터뷰 요약'), findsOneWidget);
+    expect(find.textContaining('연결 묶음'), findsNothing);
+    expect(find.text('연결 · 회의 · 환불 고객 인터뷰 요약'), findsNothing);
 
     expect(find.byType(OverviewWindow), findsOneWidget);
     if (Platform.environment['UPDATE_DEMO_GOLDEN'] == '1') {

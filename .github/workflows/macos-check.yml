@@ -1,0 +1,44 @@
+name: macOS compatibility
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 1'
+  pull_request:
+    paths:
+      - 'macos/**'
+      - 'lib/embed/**'
+      - 'lib/windows/sticky_window.dart'
+      - 'lib/ipc.dart'
+      - 'lib/main_controller.dart'
+      - 'lib/main.dart'
+      - 'lib/menubar.dart'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/macos-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: 3.41.7
+          channel: stable
+          cache: true
+          pub-cache: true
+      - run: flutter pub get
+      - run: flutter analyze --fatal-infos
+      - run: flutter test
+      - run: flutter build macos --release

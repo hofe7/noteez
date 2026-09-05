@@ -1,0 +1,706 @@
+{
+  "version": 1,
+  "description": "Synthetic bilingual notes written for this repository; no user data. Twenty topics, two anchors and three candidates per topic.",
+  "notes": [
+    {
+      "id": "aurora_onboarding-1",
+      "topic": "aurora_onboarding",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "오로라 온보딩 업무: 가입 첫 화면의 이탈 원인을 고객 인터뷰로 확인"
+    },
+    {
+      "id": "aurora_onboarding-2",
+      "topic": "aurora_onboarding",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "오로라 온보딩 업무 개선: 신규 고객 첫 화면 안내 문구를 줄이기"
+    },
+    {
+      "id": "aurora_onboarding-3",
+      "topic": "aurora_onboarding",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "오로라 신규 가입자가 시작 화면에서 멈춘다. 단계별 도움말을 단순하게"
+    },
+    {
+      "id": "aurora_onboarding-4",
+      "topic": "aurora_onboarding",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "가입 직후 사용자가 무엇을 눌러야 할지 모른다. 오로라 첫 경험을 다시 설계"
+    },
+    {
+      "id": "aurora_onboarding-5",
+      "topic": "aurora_onboarding",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Aurora onboarding: reduce friction after signup and simplify the welcome screen"
+    },
+    {
+      "id": "aurora_billing-1",
+      "topic": "aurora_billing",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "오로라 결제 업무: 구독 갱신에서 카드 승인 실패가 반복됨"
+    },
+    {
+      "id": "aurora_billing-2",
+      "topic": "aurora_billing",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "오로라 결제 업무 개선: 구독 갱신 승인 실패 시 재시도 정책"
+    },
+    {
+      "id": "aurora_billing-3",
+      "topic": "aurora_billing",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "오로라 카드 결제가 거절된 고객에게 구독 만료 전에 안내 메일 보내기"
+    },
+    {
+      "id": "aurora_billing-4",
+      "topic": "aurora_billing",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "오로라 유료 플랜의 renewal 오류를 재현하고 payment retry 횟수 조정"
+    },
+    {
+      "id": "aurora_billing-5",
+      "topic": "aurora_billing",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "매달 자동으로 청구되는 오로라 이용료가 이중 승인되지 않도록 멱등키 적용"
+    },
+    {
+      "id": "boram_onboarding-1",
+      "topic": "boram_onboarding",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "보람 온보딩 업무: 신규 직원 첫날 사내 계정과 출입증 발급"
+    },
+    {
+      "id": "boram_onboarding-2",
+      "topic": "boram_onboarding",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "보람 온보딩 업무 개선: 신규 직원 계정 발급 체크리스트"
+    },
+    {
+      "id": "boram_onboarding-3",
+      "topic": "boram_onboarding",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "다음 주 보람 입사자에게 노트북과 사원증을 준비해서 전달"
+    },
+    {
+      "id": "boram_onboarding-4",
+      "topic": "boram_onboarding",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "보람 신입사원 첫 출근 안내에 사무실 위치와 멘토 연락처 추가"
+    },
+    {
+      "id": "boram_onboarding-5",
+      "topic": "boram_onboarding",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Boram employee onboarding: laptop setup and access badge before day one"
+    },
+    {
+      "id": "cache-1",
+      "topic": "cache",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "네뷸라 Redis 캐시 개선: 상품 조회 응답 지연과 TTL 정책 점검"
+    },
+    {
+      "id": "cache-2",
+      "topic": "cache",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "네뷸라 Redis 캐시 개선 업무: 상품 조회 cache miss 비율 확인"
+    },
+    {
+      "id": "cache-3",
+      "topic": "cache",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "네뷸라 상품 API의 레디스 만료 시간을 늘려 DB 부하 줄이기"
+    },
+    {
+      "id": "cache-4",
+      "topic": "cache",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "같은 상품을 계속 읽는데 저장소를 매번 조회한다. 네뷸라 캐시 적중률 측정"
+    },
+    {
+      "id": "cache-5",
+      "topic": "cache",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Nebula Redis product cache: invalidate entries when inventory changes"
+    },
+    {
+      "id": "backup-1",
+      "topic": "backup",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "루나 백업 복원 업무: SQLite 스냅샷과 첨부파일을 ZIP으로 저장"
+    },
+    {
+      "id": "backup-2",
+      "topic": "backup",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "루나 백업 복원 개선: SQLite 스냅샷 무결성과 첨부파일 경로 검사"
+    },
+    {
+      "id": "backup-3",
+      "topic": "backup",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "루나에서 저장해 둔 압축 파일을 새 컴퓨터에 가져와 메모 되살리기"
+    },
+    {
+      "id": "backup-4",
+      "topic": "backup",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "루나 DB 손상에 대비해 매일 사본을 남기고 복구 훈련하기"
+    },
+    {
+      "id": "backup-5",
+      "topic": "backup",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Luna recovery drill: restore notes and attachments from yesterday snapshot"
+    },
+    {
+      "id": "ios_release-1",
+      "topic": "ios_release",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "혜성 iOS 배포 업무: TestFlight 빌드 업로드와 심사 설명 작성"
+    },
+    {
+      "id": "ios_release-2",
+      "topic": "ios_release",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "혜성 iOS 배포 점검: TestFlight 테스트 후 App Store 심사 제출"
+    },
+    {
+      "id": "ios_release-3",
+      "topic": "ios_release",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "혜성 아이폰 앱 심사에서 로그인 테스트 계정을 요구한다"
+    },
+    {
+      "id": "ios_release-4",
+      "topic": "ios_release",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "Comet iOS release: fix signing profile before uploading the archive"
+    },
+    {
+      "id": "ios_release-5",
+      "topic": "ios_release",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "혜성 앱스토어 업데이트가 승인되면 단계적 출시를 시작한다"
+    },
+    {
+      "id": "android_release-1",
+      "topic": "android_release",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "혜성 Android 배포 업무: Play Console 내부 테스트와 서명키 확인"
+    },
+    {
+      "id": "android_release-2",
+      "topic": "android_release",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "혜성 Android 배포 점검: Play Console 내부 테스트 후 프로덕션 승격"
+    },
+    {
+      "id": "android_release-3",
+      "topic": "android_release",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "혜성 안드로이드 AAB 업로드 전에 target SDK 설정 검토"
+    },
+    {
+      "id": "android_release-4",
+      "topic": "android_release",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "Comet Android release: verify Play app signing and rollout percentage"
+    },
+    {
+      "id": "android_release-5",
+      "topic": "android_release",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "혜성 플레이스토어 새 버전의 비정상 종료율을 확인하고 출시 범위 확대"
+    },
+    {
+      "id": "hiring-1",
+      "topic": "hiring",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "소나 채용 업무: 백엔드 지원자 인터뷰 평가 기준 합의"
+    },
+    {
+      "id": "hiring-2",
+      "topic": "hiring",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "소나 채용 업무 개선: 백엔드 지원자 인터뷰 질문과 평가표 정리"
+    },
+    {
+      "id": "hiring-3",
+      "topic": "hiring",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "소나 서버 개발 후보자의 설계 역량을 같은 기준으로 평가해야 한다"
+    },
+    {
+      "id": "hiring-4",
+      "topic": "hiring",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "Sona hiring: schedule backend candidate interviews and collect feedback"
+    },
+    {
+      "id": "hiring-5",
+      "topic": "hiring",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "소나 개발자 면접에서 면접관마다 점수를 다르게 주는 문제를 줄이기"
+    },
+    {
+      "id": "conference-1",
+      "topic": "conference",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "가을 개발 컨퍼런스 준비: 발표 제목과 연사 일정 확정"
+    },
+    {
+      "id": "conference-2",
+      "topic": "conference",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "가을 개발 컨퍼런스 준비 업무: 발표 연사 리허설 일정 예약"
+    },
+    {
+      "id": "conference-3",
+      "topic": "conference",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "가을 행사 발표자에게 슬라이드 마감일과 무대 장비 안내"
+    },
+    {
+      "id": "conference-4",
+      "topic": "conference",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "개발 컨퍼런스 세션 사이에 질의응답 시간을 확보하자"
+    },
+    {
+      "id": "conference-5",
+      "topic": "conference",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Autumn developer conference: speaker rehearsal and microphone check"
+    },
+    {
+      "id": "family_trip-1",
+      "topic": "family_trip",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "제주 가족 여행 준비: 숙소 예약과 렌터카 인수 시간 확인"
+    },
+    {
+      "id": "family_trip-2",
+      "topic": "family_trip",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "제주 가족 여행 준비: 숙소 근처 식당과 렌터카 동선 정리"
+    },
+    {
+      "id": "family_trip-3",
+      "topic": "family_trip",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "부모님과 제주에 가니 걷는 일정은 짧게 하고 쉬는 시간을 늘리자"
+    },
+    {
+      "id": "family_trip-4",
+      "topic": "family_trip",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "비가 오면 제주 가족 여행 코스를 실내 박물관으로 바꾸기"
+    },
+    {
+      "id": "family_trip-5",
+      "topic": "family_trip",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Jeju family holiday: book a rental car with space for luggage"
+    },
+    {
+      "id": "business_trip-1",
+      "topic": "business_trip",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "부산 출장 준비: 고객사 미팅 일정과 KTX 승차권 예약"
+    },
+    {
+      "id": "business_trip-2",
+      "topic": "business_trip",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "부산 출장 준비 업무: 고객사 미팅 자료와 KTX 영수증 챙기기"
+    },
+    {
+      "id": "business_trip-3",
+      "topic": "business_trip",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "부산 고객 방문 후 교통비와 숙박비를 회사에 정산하기"
+    },
+    {
+      "id": "business_trip-4",
+      "topic": "business_trip",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "부산 지사에서 제품 시연을 해야 하니 어댑터를 가져간다"
+    },
+    {
+      "id": "business_trip-5",
+      "topic": "business_trip",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Busan business trip: confirm client demo room and train departure"
+    },
+    {
+      "id": "grocery-1",
+      "topic": "grocery",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "이번 주 장보기: 우유 계란 두부와 아침 식사용 과일"
+    },
+    {
+      "id": "grocery-2",
+      "topic": "grocery",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "주말 장보기 목록: 우유 계란 두부 재고를 먼저 확인"
+    },
+    {
+      "id": "grocery-3",
+      "topic": "grocery",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "냉장고에 달걀이 없다. 퇴근길에 마트에서 식재료 사오기"
+    },
+    {
+      "id": "grocery-4",
+      "topic": "grocery",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "아침에 먹을 바나나와 요거트를 식료품 목록에 추가"
+    },
+    {
+      "id": "grocery-5",
+      "topic": "grocery",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Groceries: eggs, milk and tofu for meals this week"
+    },
+    {
+      "id": "running-1",
+      "topic": "running",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "하프 마라톤 훈련: 주말 장거리 달리기와 주간 거리 기록"
+    },
+    {
+      "id": "running-2",
+      "topic": "running",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "하프 마라톤 훈련 계획: 장거리 달리기 페이스와 회복일 조정"
+    },
+    {
+      "id": "running-3",
+      "topic": "running",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "21km 대회를 준비하니 이번 주 러닝은 천천히 오래 뛰기"
+    },
+    {
+      "id": "running-4",
+      "topic": "running",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "무릎이 불편하면 달리기 거리를 줄이고 스트레칭 시간을 늘리자"
+    },
+    {
+      "id": "running-5",
+      "topic": "running",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Half marathon training: easy pace long run and a recovery day"
+    },
+    {
+      "id": "dental-1",
+      "topic": "dental",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "치과 진료 예약: 스케일링 날짜와 보험 적용 여부 문의"
+    },
+    {
+      "id": "dental-2",
+      "topic": "dental",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "치과 진료 준비: 스케일링 예약 시간을 문자로 확인"
+    },
+    {
+      "id": "dental-3",
+      "topic": "dental",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "잇몸이 자꾸 붓는다. 치과에서 지난 검진 결과와 함께 상담"
+    },
+    {
+      "id": "dental-4",
+      "topic": "dental",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "다음 치아 검진 때 사랑니 통증도 의사에게 이야기하기"
+    },
+    {
+      "id": "dental-5",
+      "topic": "dental",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Dental appointment: cleaning and gum check next Tuesday"
+    },
+    {
+      "id": "home_move-1",
+      "topic": "home_move",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "이사 준비: 포장이사 견적 비교와 전입신고 일정"
+    },
+    {
+      "id": "home_move-2",
+      "topic": "home_move",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "이사 준비 목록: 포장이사 계약과 인터넷 이전 신청"
+    },
+    {
+      "id": "home_move-3",
+      "topic": "home_move",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "새집으로 옮기는 날 가구 배치도를 인부에게 전달하기"
+    },
+    {
+      "id": "home_move-4",
+      "topic": "home_move",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "주소가 바뀌면 우편물 배송지와 은행 연락처를 수정"
+    },
+    {
+      "id": "home_move-5",
+      "topic": "home_move",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Moving house: label boxes and transfer the internet connection"
+    },
+    {
+      "id": "bookclub-1",
+      "topic": "bookclub",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "독서모임 준비: 이번 달 소설 토론 질문과 모임 장소"
+    },
+    {
+      "id": "bookclub-2",
+      "topic": "bookclub",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "독서모임 준비: 소설 마지막 장에 대한 토론 질문 정리"
+    },
+    {
+      "id": "bookclub-3",
+      "topic": "bookclub",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "책 속 화자의 선택을 다르게 해석한 부분을 모임에서 이야기하자"
+    },
+    {
+      "id": "bookclub-4",
+      "topic": "bookclub",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "이번 독서모임 참석자에게 읽을 범위와 카페 위치 안내"
+    },
+    {
+      "id": "bookclub-5",
+      "topic": "bookclub",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Book club: discuss the narrator and the ending of this month novel"
+    },
+    {
+      "id": "language-1",
+      "topic": "language",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "영어 회화 공부: 주 3회 발음 연습과 녹음 듣기"
+    },
+    {
+      "id": "language-2",
+      "topic": "language",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "영어 회화 공부 계획: 발음 연습 문장을 짧게 나누기"
+    },
+    {
+      "id": "language-3",
+      "topic": "language",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "영어로 말할 때 자꾸 멈춘다. 같은 주제로 1분씩 녹음해 보자"
+    },
+    {
+      "id": "language-4",
+      "topic": "language",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "영어 튜터가 고쳐준 강세를 내 목소리와 비교하기"
+    },
+    {
+      "id": "language-5",
+      "topic": "language",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "English speaking practice: record one minute and review pronunciation"
+    },
+    {
+      "id": "camera-1",
+      "topic": "camera",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "사진 취미: 야간 촬영 노출과 삼각대 사용 연습"
+    },
+    {
+      "id": "camera-2",
+      "topic": "camera",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "사진 촬영 연습: 야간 노출 시간을 바꿔가며 결과 비교"
+    },
+    {
+      "id": "camera-3",
+      "topic": "camera",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "밤거리 사진이 흔들리니 셔터 속도와 감도를 조절해 보자"
+    },
+    {
+      "id": "camera-4",
+      "topic": "camera",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "삼각대를 놓고 빛 궤적을 길게 담는 촬영을 시도"
+    },
+    {
+      "id": "camera-5",
+      "topic": "camera",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Night photography: use a tripod and experiment with long exposure"
+    },
+    {
+      "id": "garden-1",
+      "topic": "garden",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "베란다 텃밭 관리: 바질 물주기와 화분 배수 상태 확인"
+    },
+    {
+      "id": "garden-2",
+      "topic": "garden",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "베란다 텃밭 관리 기록: 바질 화분 물주기 주기 조절"
+    },
+    {
+      "id": "garden-3",
+      "topic": "garden",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "허브 잎이 노랗게 변한다. 흙이 너무 젖어 있는지 확인"
+    },
+    {
+      "id": "garden-4",
+      "topic": "garden",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "햇빛이 잘 드는 창가로 바질을 옮기고 마른 잎 잘라주기"
+    },
+    {
+      "id": "garden-5",
+      "topic": "garden",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Balcony herb garden: check soil moisture before watering basil"
+    },
+    {
+      "id": "budget-1",
+      "topic": "budget",
+      "role": "anchor",
+      "dayOffset": 0,
+      "text": "개인 가계부 정리: 월세 통신비와 정기 구독 지출 점검"
+    },
+    {
+      "id": "budget-2",
+      "topic": "budget",
+      "role": "anchor",
+      "dayOffset": 2,
+      "text": "개인 가계부 점검: 월세 통신비를 고정 지출로 분류"
+    },
+    {
+      "id": "budget-3",
+      "topic": "budget",
+      "role": "candidate",
+      "dayOffset": 8,
+      "text": "매달 나가는 돈 중 안 쓰는 구독을 취소해서 생활비 줄이기"
+    },
+    {
+      "id": "budget-4",
+      "topic": "budget",
+      "role": "candidate",
+      "dayOffset": 45,
+      "text": "이번 달 카드 명세서를 보고 식비와 교통비 예산 조정"
+    },
+    {
+      "id": "budget-5",
+      "topic": "budget",
+      "role": "candidate",
+      "dayOffset": 90,
+      "text": "Personal budget: review recurring subscriptions and monthly rent"
+    }
+  ]
+}

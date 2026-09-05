@@ -1,0 +1,185 @@
+{
+  "embeddingPolicyVersion": 1,
+  "groupingPolicyVersion": 3,
+  "fixtureVersion": 1,
+  "fixtureSplit": "validation",
+  "fixtureSha256": "43b0c1974b2e19218a92d406a8817366accfc18f2db75a145c52a2237f9cfd78",
+  "mode": "multilingual-e5-small-qint8",
+  "modelSha256": "dd476dd0c2514e9b9be83aeb3853fac0763e0bdf4a71645407587d77c48a2d88",
+  "tokenizerSha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39",
+  "notes": 60,
+  "clusters": 14,
+  "predictedClusters": [
+    [
+      "miru_accessibility-2",
+      "miru_accessibility-1",
+      "miru_accessibility-3",
+      "miru_notifications-3"
+    ],
+    [
+      "video_edit-2",
+      "video_edit-1",
+      "video_edit-3"
+    ],
+    [
+      "volunteer-2",
+      "volunteer-1",
+      "volunteer-3"
+    ],
+    [
+      "pet-1",
+      "pet-2",
+      "pet-3"
+    ],
+    [
+      "password_reset-2",
+      "password_reset-1",
+      "password_reset-3"
+    ],
+    [
+      "language_talk-1",
+      "language_talk-2",
+      "language_talk-3"
+    ],
+    [
+      "data_cleanup-2",
+      "data_cleanup-1",
+      "data_cleanup-3"
+    ],
+    [
+      "suri_accessibility-2",
+      "suri_accessibility-1",
+      "suri_accessibility-3"
+    ],
+    [
+      "podcast_audio-1",
+      "podcast_audio-2",
+      "podcast_audio-3"
+    ],
+    [
+      "network-2",
+      "network-1",
+      "network-3"
+    ],
+    [
+      "bread-1",
+      "bread-2",
+      "bread-3"
+    ],
+    [
+      "boardgame-1",
+      "boardgame-2",
+      "boardgame-3"
+    ],
+    [
+      "coffee-1",
+      "coffee-2"
+    ],
+    [
+      "furniture-1",
+      "furniture-2"
+    ]
+  ],
+  "inferenceSource": "onnx",
+  "clusterPairs": {
+    "correct": 38,
+    "incorrect": 3,
+    "expected": 90,
+    "precision": 0.926829268292683,
+    "recall": 0.4222222222222222
+  },
+  "baselineClusterPairs": {
+    "correct": 27,
+    "incorrect": 35,
+    "expected": 90,
+    "precision": 0.43548387096774194,
+    "recall": 0.3
+  },
+  "previousPolicyClusterPairs": {
+    "correct": 38,
+    "incorrect": 3,
+    "expected": 90,
+    "precision": 0.926829268292683,
+    "recall": 0.4222222222222222
+  },
+  "previousPolicyClusters": [
+    [
+      "miru_accessibility-2",
+      "miru_accessibility-1",
+      "miru_accessibility-3",
+      "miru_notifications-3"
+    ],
+    [
+      "video_edit-2",
+      "video_edit-1",
+      "video_edit-3"
+    ],
+    [
+      "volunteer-2",
+      "volunteer-1",
+      "volunteer-3"
+    ],
+    [
+      "pet-1",
+      "pet-2",
+      "pet-3"
+    ],
+    [
+      "password_reset-2",
+      "password_reset-1",
+      "password_reset-3"
+    ],
+    [
+      "language_talk-1",
+      "language_talk-2",
+      "language_talk-3"
+    ],
+    [
+      "data_cleanup-2",
+      "data_cleanup-1",
+      "data_cleanup-3"
+    ],
+    [
+      "suri_accessibility-2",
+      "suri_accessibility-1",
+      "suri_accessibility-3"
+    ],
+    [
+      "podcast_audio-1",
+      "podcast_audio-2",
+      "podcast_audio-3"
+    ],
+    [
+      "network-2",
+      "network-1",
+      "network-3"
+    ],
+    [
+      "bread-1",
+      "bread-2",
+      "bread-3"
+    ],
+    [
+      "boardgame-1",
+      "boardgame-2",
+      "boardgame-3"
+    ],
+    [
+      "coffee-1",
+      "coffee-2"
+    ],
+    [
+      "furniture-1",
+      "furniture-2"
+    ]
+  ],
+  "groupAdditions": {
+    "suggested": 8,
+    "correct": 8,
+    "expected": 30,
+    "precision": 1.0,
+    "recall": 0.26666666666666666,
+    "mistakes": []
+  },
+  "groupingElapsedMs": 60
+}
