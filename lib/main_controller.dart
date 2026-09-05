@@ -1,3 +1,6 @@
+import 'services/note_save_service.dart';
+import 'services/group_service.dart';
+import 'models/group_change.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -28,7 +31,22 @@ const _uuid = Uuid();
 
 /// 메인 프로세스 = 권위자. 상태 + Drift(SQLite) 영속화 소유, 스티커 창 생성/추적.
 class MainController extends ChangeNotifier {
-  final AppDatabase _db = AppDatabase();
+  MainController({AppDatabase? database}) : _db = database ?? AppDatabase();
+
+  final AppDatabase _db;
+  late final GroupService _groups = GroupService(_db);
+  late final NoteSaveService _noteSaves = NoteSaveService(
+    persist: _db.updateExisting,
+    read: _stickyOf,
+    publish: (note) {
+      final index = stickies.indexWhere((s) => s.id == note.id);
+      if (index < 0) return;
+      stickies[index] = note;
+      _queueIndex(note);
+      notifyListeners();
+      _pushOverview();
+    },
+  );
   final BackupService _backups = BackupService();
   final ConnectionEngine _conn = ConnectionEngine();
   final ModelManager _models = ModelManager();
@@ -156,8 +174,9 @@ class MainController extends ChangeNotifier {
   Future<void> _fireReminder(String id) async {
     final i = stickies.indexWhere((e) => e.id == id);
     if (i == -1) return;
-    final s = stickies[i] = stickies[i].copyWith(clearRemind: true);
-    await _db.upsert(s);
+    await _noteSaves.update(id, (note) => note.copyWith(clearRemind: true));
+    final s = _stickyOf(id);
+    if (s == null) return;
     // 알림 가능하면 알림(클릭 시 소환), 아니면 자동 소환 폴백(권한 불필요, 항상 동작).
     if (_notifier.granted) {
       await _notifier.show(id, '⏰ ${s.preview}', '리마인더');
@@ -224,14 +243,15 @@ class MainController extends ChangeNotifier {
   }
 
   Future<void> _reloadNoteGroups() async {
+    final snapshot = await _groups.snapshot();
+    final groups = snapshot.groups;
+    final members = snapshot.members;
     _noteGroups
       ..clear()
-      ..addAll(await _db.allActiveGroups());
+      ..addAll(groups);
     _groupMembers
       ..clear()
-      ..addEntries(
-        (await _db.allGroupMembers()).map((m) => MapEntry(m.stickyId, m)),
-      );
+      ..addEntries(members.map((m) => MapEntry(m.stickyId, m)));
     final liveGroupIds = _noteGroups.map((g) => g.id).toSet();
     _groupMembers.removeWhere(
       (stickyId, member) =>
@@ -241,55 +261,18 @@ class MainController extends ChangeNotifier {
     _refreshConnections();
   }
 
-  String _cleanGroupName(String value) {
-    final name = value.trim().replaceAll(RegExp(r'\s+'), ' ');
-    if (name.isEmpty) return '새 묶음';
-    return name.length > 80 ? name.substring(0, 80).trimRight() : name;
-  }
-
-  Future<String> _createNoteGroup(
-    String name,
-    Iterable<String> ids, {
-    String? requestedId,
-    bool collapsed = false,
-    int? requestedPosition,
-  }) async {
-    final id = requestedId?.trim().isNotEmpty == true
-        ? requestedId!.trim()
-        : _uuid.v4();
-    final position =
-        requestedPosition ??
-        (_noteGroups.isEmpty
-            ? 0
-            : _noteGroups
-                      .map((g) => g.position)
-                      .reduce((a, b) => a > b ? a : b) +
-                  1);
-    await _db.transaction(() async {
-      await _db.upsertNoteGroup(
-        id: id,
-        name: _cleanGroupName(name),
-        position: position,
-        collapsed: collapsed,
+  Future<String> _groupResult(Future<GroupChange> operation) async {
+    try {
+      final result = await operation;
+      await _reloadNoteGroups();
+      _pushOverview();
+      return result.encode();
+    } on GroupChangeConflict catch (error) {
+      throw PlatformException(
+        code: 'group_conflict',
+        message: error.toString(),
       );
-      await _db.assignNotesToGroup(
-        id,
-        ids.where((noteId) => _stickyOf(noteId) != null),
-      );
-    });
-    await _reloadNoteGroups();
-    _pushOverview();
-    return id;
-  }
-
-  Future<void> _assignNotesToGroup(String groupId, Iterable<String> ids) async {
-    if (!_noteGroups.any((g) => g.id == groupId)) return;
-    await _db.assignNotesToGroup(
-      groupId,
-      ids.where((noteId) => _stickyOf(noteId) != null),
-    );
-    await _reloadNoteGroups();
-    _pushOverview();
+    }
   }
 
   Future<void> _unlinkPair(String a, String b) async {
@@ -334,23 +317,18 @@ class MainController extends ChangeNotifier {
   Future<dynamic> _onCall(MethodCall call) async {
     switch (call.method) {
       case ToMain.updateSticky:
-        var s = Sticky.fromJson(
+        final s = Sticky.fromJson(
           jsonDecode(call.arguments as String) as Map<String, dynamic>,
         );
-        // 리마인더는 setReminder 가 권위자. 창이 일반 업데이트로 보낸 과거 remindAt
-        // (이미 발화된 것)은 무시 — 재시작 시 catch-up 재발화 방지.
-        final ra = s.remindAt;
-        if (ra != null && ra <= DateTime.now().millisecondsSinceEpoch) {
-          s = s.copyWith(clearRemind: true);
-        }
-        final i = stickies.indexWhere((e) => e.id == s.id);
-        // Windows only edit existing notes. Late IPC must not resurrect deletion.
-        if (i == -1) return;
-        stickies[i] = s;
-        await _db.upsert(s);
-        _queueIndex(s);
-        notifyListeners();
-        _pushOverview();
+        // Reminder state belongs to the main process. Merge it at commit time,
+        // so an editor's older snapshot cannot cancel or revive a reminder.
+        await _noteSaves.update(
+          s.id,
+          (current) => s.copyWith(
+            remindAt: current.remindAt,
+            clearRemind: current.remindAt == null,
+          ),
+        );
       case ToMain.deleteSticky:
         final id = call.arguments as String;
         await _db.trashNote(id);
@@ -446,15 +424,16 @@ class MainController extends ChangeNotifier {
               },
           ],
         });
-      case ToMain.restoreNoteMemberships:
-        final data =
-            jsonDecode(call.arguments as String) as Map<String, dynamic>;
-        await _db.restoreNoteMemberships(
-          (data['memberships'] as Map).cast<String, String?>(),
-          deleteGroupId: data['deleteGroupId'] as String?,
-        );
+      case ToMain.undoGroupChange:
+        try {
+          await _groups.undo(call.arguments as String);
+        } on GroupChangeConflict catch (error) {
+          throw PlatformException(
+            code: 'group_conflict',
+            message: error.toString(),
+          );
+        }
         await _reloadNoteGroups();
-        _refreshConnections();
         _pushOverview();
       case ToMain.linkStickies:
         final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
@@ -467,37 +446,33 @@ class MainController extends ChangeNotifier {
         await _linkIds(ids);
       case ToMain.createNoteGroup:
         final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
-        return _createNoteGroup(
-          m['name'] as String? ?? '',
-          ((m['ids'] as List?) ?? const []).cast<String>(),
-          requestedId: m['id'] as String?,
-          collapsed: m['collapsed'] as bool? ?? false,
-          requestedPosition: m['position'] as int?,
+        return _groupResult(
+          _groups.create(
+            m['name'] as String,
+            (m['ids'] as List).cast<String>(),
+          ),
         );
       case ToMain.renameNoteGroup:
         final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
-        await _db.renameNoteGroup(
-          m['id'] as String,
-          _cleanGroupName(m['name'] as String? ?? ''),
+        return _groupResult(
+          _groups.rename(m['id'] as String, m['name'] as String),
         );
-        await _reloadNoteGroups();
-        _pushOverview();
       case ToMain.deleteNoteGroup:
-        await _db.softDeleteNoteGroup(call.arguments as String);
-        await _reloadNoteGroups();
-        _pushOverview();
+        return _groupResult(_groups.delete(call.arguments as String));
       case ToMain.assignNotesToGroup:
         final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
-        await _assignNotesToGroup(
-          m['groupId'] as String,
-          ((m['ids'] as List?) ?? const []).cast<String>(),
+        return _groupResult(
+          _groups.move(
+            m['groupId'] as String,
+            (m['ids'] as List).cast<String>(),
+          ),
         );
       case ToMain.removeNotesFromGroup:
-        final ids = (jsonDecode(call.arguments as String) as List)
-            .cast<String>();
-        await _db.removeNotesFromGroup(ids);
-        await _reloadNoteGroups();
-        _pushOverview();
+        return _groupResult(
+          _groups.remove(
+            (jsonDecode(call.arguments as String) as List).cast<String>(),
+          ),
+        );
       case ToMain.setNoteGroupCollapsed:
         final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
         await _db.setNoteGroupCollapsed(
@@ -534,8 +509,7 @@ class MainController extends ChangeNotifier {
         final id = call.arguments as String;
         final i = stickies.indexWhere((e) => e.id == id);
         if (i != -1) {
-          stickies[i] = stickies[i].copyWith(open: false);
-          await _db.upsert(stickies[i]);
+          await _noteSaves.update(id, (note) => note.copyWith(open: false));
         }
         _windows.remove(id);
         _pushOverview();
@@ -549,8 +523,7 @@ class MainController extends ChangeNotifier {
         }
         final i = stickies.indexWhere((e) => e.id == id);
         if (i != -1) {
-          stickies[i] = stickies[i].copyWith(open: false);
-          await _db.upsert(stickies[i]);
+          await _noteSaves.update(id, (note) => note.copyWith(open: false));
         }
         _windows.remove(id);
         notifyListeners();
@@ -563,8 +536,7 @@ class MainController extends ChangeNotifier {
         final at = m['at'] as int;
         final i = stickies.indexWhere((e) => e.id == id);
         if (i != -1) {
-          stickies[i] = stickies[i].copyWith(remindAt: at);
-          await _db.upsert(stickies[i]);
+          await _noteSaves.update(id, (note) => note.copyWith(remindAt: at));
           _reminders.schedule(id, at);
           notifyListeners();
           _pushOverview();
@@ -574,8 +546,10 @@ class MainController extends ChangeNotifier {
         _reminders.cancel(id);
         final i = stickies.indexWhere((e) => e.id == id);
         if (i != -1) {
-          stickies[i] = stickies[i].copyWith(clearRemind: true);
-          await _db.upsert(stickies[i]);
+          await _noteSaves.update(
+            id,
+            (note) => note.copyWith(clearRemind: true),
+          );
           notifyListeners();
           _pushOverview();
         }
@@ -678,8 +652,8 @@ class MainController extends ChangeNotifier {
       y: 180 + n * 26.0,
       colorIndex: n % 6,
     );
-    stickies.add(s);
     await _db.upsert(s);
+    stickies.add(s);
     await _spawn(s);
     notifyListeners();
   }
@@ -779,15 +753,13 @@ class MainController extends ChangeNotifier {
           blocks: _importBlocks(note),
           updatedAt: note.metadata.updatedAt ?? DateTime.now(),
         );
-        final index = stickies.indexWhere((s) => s.id == existing.id);
-        stickies[index] = sticky;
-        await _db.upsert(sticky);
+        await _noteSaves.save(sticky);
         changed.add(sticky);
         updated++;
       } else if (decision == MarkdownImportDecision.preserveBoth) {
         sticky = _newImportedSticky(note);
-        stickies.add(sticky);
         await _db.upsert(sticky);
+        stickies.add(sticky);
         changed.add(sticky);
         imported++;
         conflicted++;
@@ -804,8 +776,8 @@ class MainController extends ChangeNotifier {
             note,
             id: externalId != null && sameId == null ? externalId : null,
           );
-          stickies.add(sticky);
           await _db.upsert(sticky);
+          stickies.add(sticky);
           changed.add(sticky);
           imported++;
         }
@@ -875,9 +847,8 @@ class MainController extends ChangeNotifier {
           }
         }
         groupId = existing?.id;
-        groupId ??= await _createNoteGroup(
+        groupId ??= await _groups.importGroup(
           metadata.groupName ?? '가져온 묶음',
-          const [],
           requestedId: requestedId,
         );
         restoredGroupIds[sourceKey] = groupId;
@@ -1004,6 +975,7 @@ class MainController extends ChangeNotifier {
 
   Future<void> shutdown() async {
     await flushPendingWrites();
+    await _noteSaves.flush();
     await _conn.close();
     await _db.close();
   }
@@ -1034,11 +1006,12 @@ class MainController extends ChangeNotifier {
     final i = stickies.indexWhere((e) => e.id == id);
     if (i == -1) return;
     if (!stickies[i].open) {
-      stickies[i] = stickies[i].copyWith(open: true);
-      await _db.upsert(stickies[i]);
+      await _noteSaves.update(id, (note) => note.copyWith(open: true));
     }
     // 닫혀있던 창: 새로 띄움. focusOnOpen 으로 커서 포커스 여부 전달.
-    await _spawn(stickies[i], focusOnOpen: focus);
+    final note = _stickyOf(id);
+    if (note == null) return;
+    await _spawn(note, focusOnOpen: focus);
     notifyListeners();
     _pushOverview();
   }
@@ -1105,8 +1078,8 @@ class MainController extends ChangeNotifier {
       colorIndex: n % 6,
       blocks: [block],
     );
-    stickies.add(s);
     await _db.upsert(s);
+    stickies.add(s);
     _queueIndex(s);
     // 캡처한 노트는 화면에 나타나게(보이는 게 안 보이는 것보다 낫다).
     await _spawn(s);

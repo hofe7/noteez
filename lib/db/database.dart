@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../models/group_change.dart';
 
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
@@ -192,6 +193,39 @@ class AppDatabase extends _$AppDatabase {
     },
   );
 
+  // Undo receipts and revisions belong to the live database owner's session.
+  // There are no persisted undo commands to migrate or replay after restart.
+  final Map<String, int> _membershipRevisions = {};
+  final Map<String, int> _groupRevisions = {};
+  int membershipRevision(String id) => _membershipRevisions[id] ?? 0;
+  int groupRevision(String id) => _groupRevisions[id] ?? 0;
+  void _touchMemberships(Iterable<String> ids) {
+    for (final id in ids.toSet()) {
+      _membershipRevisions[id] = membershipRevision(id) + 1;
+    }
+  }
+
+  void _touchGroup(String id) {
+    _groupRevisions[id] = groupRevision(id) + 1;
+  }
+
+  Future<T> groupTransaction<T>(Future<T> Function() operation) =>
+      transaction(() async {
+        final membersBefore = Map<String, int>.of(_membershipRevisions);
+        final groupsBefore = Map<String, int>.of(_groupRevisions);
+        try {
+          return await operation();
+        } catch (_) {
+          _membershipRevisions
+            ..clear()
+            ..addAll(membersBefore);
+          _groupRevisions
+            ..clear()
+            ..addAll(groupsBefore);
+          rethrow;
+        }
+      });
+
   Future<void> initializeWelcome() => transaction(() async {
     final initialized = await (select(
       appSettings,
@@ -245,9 +279,10 @@ class AppDatabase extends _$AppDatabase {
     required int position,
     bool collapsed = false,
     int? createdAt,
-  }) {
+  }) => groupTransaction(() async {
+    _touchGroup(id);
     final now = DateTime.now().millisecondsSinceEpoch;
-    return into(noteGroups).insertOnConflictUpdate(
+    await into(noteGroups).insertOnConflictUpdate(
       NoteGroupsCompanion.insert(
         id: id,
         name: name,
@@ -258,15 +293,18 @@ class AppDatabase extends _$AppDatabase {
         deletedAt: const Value(null),
       ),
     );
-  }
+  });
 
   Future<void> renameNoteGroup(String id, String name) =>
-      (update(noteGroups)..where((t) => t.id.equals(id))).write(
-        NoteGroupsCompanion(
-          name: Value(name),
-          updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
-        ),
-      );
+      groupTransaction(() async {
+        _touchGroup(id);
+        await (update(noteGroups)..where((t) => t.id.equals(id))).write(
+          NoteGroupsCompanion(
+            name: Value(name),
+            updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
+          ),
+        );
+      });
 
   Future<void> setNoteGroupCollapsed(String id, bool collapsed) =>
       (update(noteGroups)..where((t) => t.id.equals(id))).write(
@@ -276,20 +314,25 @@ class AppDatabase extends _$AppDatabase {
         ),
       );
 
-  Future<void> softDeleteNoteGroup(String id) => transaction(() async {
+  Future<void> softDeleteNoteGroup(String id) => groupTransaction(() async {
+    _touchGroup(id);
+    final members = await (select(
+      groupMembers,
+    )..where((t) => t.groupId.equals(id))).get();
+    await removeNotesFromGroup(members.map((m) => m.stickyId));
     await (update(noteGroups)..where((t) => t.id.equals(id))).write(
       NoteGroupsCompanion(
         deletedAt: Value(DateTime.now().millisecondsSinceEpoch),
       ),
     );
-    await (delete(groupMembers)..where((t) => t.groupId.equals(id))).go();
   });
 
   Future<void> assignNotesToGroup(String groupId, Iterable<String> ids) async {
     final uniqueIds = ids.toSet().toList();
     if (uniqueIds.isEmpty) return;
     final now = DateTime.now().millisecondsSinceEpoch;
-    await transaction(() async {
+    await groupTransaction(() async {
+      _touchMemberships(uniqueIds);
       final current =
           await (select(groupMembers)
                 ..where((t) => t.groupId.equals(groupId))
@@ -309,19 +352,29 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Future<void> removeNotesFromGroup(Iterable<String> ids) {
-    final uniqueIds = ids.toSet().toList();
-    if (uniqueIds.isEmpty) return Future.value();
-    return (delete(
-      groupMembers,
-    )..where((t) => t.stickyId.isIn(uniqueIds))).go();
-  }
+  Future<void> removeNotesFromGroup(Iterable<String> ids) =>
+      transaction(() async {
+        final uniqueIds = ids.toSet().toList();
+        if (uniqueIds.isEmpty) return;
+        _touchMemberships(uniqueIds);
+        await (delete(
+          groupMembers,
+        )..where((t) => t.stickyId.isIn(uniqueIds))).go();
+      });
 
   /// Restore a multi-note move as one transaction, including undoing creation.
   Future<void> restoreNoteMemberships(
     Map<String, String?> previous, {
     String? deleteGroupId,
-  }) => transaction(() async {
+    required Map<String, int> expectedRevisions,
+    int? expectedCreatedGroupRevision,
+  }) => groupTransaction(() async {
+    if (previous.length != expectedRevisions.length ||
+        previous.keys.any(
+          (id) => expectedRevisions[id] != membershipRevision(id),
+        )) {
+      throw const GroupChangeConflict();
+    }
     final liveGroups = (await allActiveGroups()).map((g) => g.id).toSet();
     if (previous.values.whereType<String>().any(
       (id) => !liveGroups.contains(id),
@@ -344,12 +397,16 @@ class AppDatabase extends _$AppDatabase {
       final remaining = await (select(
         groupMembers,
       )..where((t) => t.groupId.equals(deleteGroupId))).get();
-      if (remaining.isEmpty) await softDeleteNoteGroup(deleteGroupId);
+      if (remaining.isEmpty &&
+          (expectedCreatedGroupRevision == null ||
+              groupRevision(deleteGroupId) == expectedCreatedGroupRevision)) {
+        await softDeleteNoteGroup(deleteGroupId);
+      }
     }
   });
 
   Future<void> deleteGroupMembershipForNote(String id) =>
-      (delete(groupMembers)..where((t) => t.stickyId.equals(id))).go();
+      removeNotesFromGroup([id]);
 
   Future<List<EmbeddingRow>> allEmbeddingsForModel(String modelId) =>
       (select(embeddings)..where((t) => t.modelId.equals(modelId))).get();
@@ -451,29 +508,34 @@ class AppDatabase extends _$AppDatabase {
     return rows.map(_toModel).toList();
   }
 
-  Future<void> upsert(Sticky s) {
-    return into(stickies).insertOnConflictUpdate(
-      StickiesCompanion.insert(
-        id: s.id,
-        colorIndex: s.colorIndex,
-        x: s.x,
-        y: s.y,
-        width: Value(s.width),
-        height: Value(s.height),
-        collapsed: Value(s.collapsed),
-        pinned: Value(s.pinned),
-        open: Value(s.open),
-        remindAt: Value(s.remindAt),
-        blocksJson: jsonEncode(s.blocks.map((b) => b.toJson()).toList()),
-        createdAt: s.createdAt.millisecondsSinceEpoch,
-        updatedAt: s.updatedAt.millisecondsSinceEpoch,
-        contentUpdatedAt: Value(s.contentUpdatedAt.millisecondsSinceEpoch),
-        // Noteez Markdown round-trip으로 과거 ID를 복원할 수 있다. 기존 행이
-        // tombstone이면 upsert와 함께 활성 상태로 되돌린다.
-        deletedAt: const Value(null),
-      ),
-    );
-  }
+  Future<void> upsert(Sticky s) =>
+      into(stickies).insertOnConflictUpdate(_values(s));
+
+  Future<bool> updateExisting(Sticky s) async =>
+      await (update(stickies)
+            ..where((t) => t.id.equals(s.id) & t.deletedAt.isNull()))
+          .write(_values(s)) >
+      0;
+
+  StickiesCompanion _values(Sticky s) => StickiesCompanion.insert(
+    id: s.id,
+    colorIndex: s.colorIndex,
+    x: s.x,
+    y: s.y,
+    width: Value(s.width),
+    height: Value(s.height),
+    collapsed: Value(s.collapsed),
+    pinned: Value(s.pinned),
+    open: Value(s.open),
+    remindAt: Value(s.remindAt),
+    blocksJson: jsonEncode(s.blocks.map((b) => b.toJson()).toList()),
+    createdAt: s.createdAt.millisecondsSinceEpoch,
+    updatedAt: s.updatedAt.millisecondsSinceEpoch,
+    contentUpdatedAt: Value(s.contentUpdatedAt.millisecondsSinceEpoch),
+    // Noteez Markdown round-trip으로 과거 ID를 복원할 수 있다. 기존 행이
+    // tombstone이면 upsert와 함께 활성 상태로 되돌린다.
+    deletedAt: const Value(null),
+  );
 
   Future<void> softDelete(String id) {
     return (update(stickies)..where((t) => t.id.equals(id))).write(

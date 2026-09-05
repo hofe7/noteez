@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 
 import 'models/sticky.dart';
+import 'models/group_change.dart';
 
 /// 스티커/보조 창 → 메인(권위자) 단방향 IPC 채널 이름.
 /// unidirectional: 메인 엔진만 핸들러 등록, 모든 창이 invoke.
@@ -19,7 +20,7 @@ abstract final class ToMain {
   static const String newSticky = 'newSticky';
   static const String openOrganization = 'openOrganization';
   static const String getOrganization = 'getOrganization';
-  static const String restoreNoteMemberships = 'restoreNoteMemberships';
+  static const String undoGroupChange = 'undoGroupChange';
   static const String getConnection = 'getConnection';
   static const String linkStickies = 'linkStickies';
   static const String linkGroup = 'linkGroup';
@@ -125,24 +126,22 @@ class MainChannel {
   Future<void> linkGroup(List<String> ids) =>
       _ch.invokeMethod(ToMain.linkGroup, jsonEncode(ids));
 
-  Future<String?> createNoteGroup(
-    String name,
-    List<String> ids, {
-    String? requestedId,
-    bool collapsed = false,
-    int? position,
-  }) async =>
-      await _ch.invokeMethod(
-            ToMain.createNoteGroup,
-            jsonEncode({
-              'name': name,
-              'ids': ids,
-              'id': requestedId,
-              'collapsed': collapsed,
-              'position': position,
-            }),
-          )
-          as String?;
+  Future<Object?> _groupCall(String method, Object? arguments) async {
+    try {
+      return await _ch.invokeMethod(method, arguments);
+    } on WindowChannelException catch (error) {
+      if (error.code == 'group_conflict') throw const GroupChangeConflict();
+      rethrow;
+    }
+  }
+
+  Future<GroupChange> createNoteGroup(String name, List<String> ids) async =>
+      GroupChange.decode(
+        await _groupCall(
+          ToMain.createNoteGroup,
+          jsonEncode({'name': name, 'ids': ids}),
+        ),
+      );
 
   Future<void> dismissGroupSuggestion(String noteId, String groupId) =>
       _ch.invokeMethod(
@@ -153,22 +152,28 @@ class MainChannel {
   Future<void> resetGroupSuggestions(String groupId) =>
       _ch.invokeMethod(ToMain.resetGroupSuggestions, groupId);
 
-  Future<void> renameNoteGroup(String id, String name) => _ch.invokeMethod(
-    ToMain.renameNoteGroup,
-    jsonEncode({'id': id, 'name': name}),
-  );
-
-  Future<void> deleteNoteGroup(String id) =>
-      _ch.invokeMethod(ToMain.deleteNoteGroup, id);
-
-  Future<void> assignNotesToGroup(String groupId, List<String> ids) =>
-      _ch.invokeMethod(
-        ToMain.assignNotesToGroup,
-        jsonEncode({'groupId': groupId, 'ids': ids}),
+  Future<GroupChange> renameNoteGroup(String id, String name) async =>
+      GroupChange.decode(
+        await _groupCall(
+          ToMain.renameNoteGroup,
+          jsonEncode({'id': id, 'name': name}),
+        ),
       );
-
-  Future<void> removeNotesFromGroup(List<String> ids) =>
-      _ch.invokeMethod(ToMain.removeNotesFromGroup, jsonEncode(ids));
+  Future<GroupChange> deleteNoteGroup(String id) async =>
+      GroupChange.decode(await _groupCall(ToMain.deleteNoteGroup, id));
+  Future<GroupChange> assignNotesToGroup(
+    String groupId,
+    List<String> ids,
+  ) async => GroupChange.decode(
+    await _groupCall(
+      ToMain.assignNotesToGroup,
+      jsonEncode({'groupId': groupId, 'ids': ids}),
+    ),
+  );
+  Future<GroupChange> removeNotesFromGroup(List<String> ids) async =>
+      GroupChange.decode(
+        await _groupCall(ToMain.removeNotesFromGroup, jsonEncode(ids)),
+      );
 
   Future<void> setNoteGroupCollapsed(String id, bool collapsed) =>
       _ch.invokeMethod(
@@ -242,13 +247,9 @@ class MainChannel {
       jsonDecode(await _ch.invokeMethod(ToMain.getOrganization) as String)
           as Map<String, dynamic>;
 
-  Future<void> restoreNoteMemberships(
-    Map<String, String?> memberships, {
-    String? deleteGroupId,
-  }) => _ch.invokeMethod(
-    ToMain.restoreNoteMemberships,
-    jsonEncode({'memberships': memberships, 'deleteGroupId': deleteGroupId}),
-  );
+  Future<void> undoGroupChange(String token) async {
+    await _groupCall(ToMain.undoGroupChange, token);
+  }
 
   Future<ConnectionResult> getConnection(String id) async =>
       ConnectionResult.parse(await _ch.invokeMethod(ToMain.getConnection, id));

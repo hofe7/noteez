@@ -16,11 +16,13 @@ void main() {
   late Map<String, String?> membership;
   late bool linked;
   late bool created;
+  late Map<String, String?> previous;
   late bool fail;
   late List<String> calls;
   setUp(() {
     created = false;
     membership = {'a': 'old', 'b': null};
+    previous = Map.of(membership);
     linked = false;
     fail = false;
     calls = [];
@@ -51,13 +53,20 @@ void main() {
       }
       calls.add(method);
       if (fail) throw PlatformException(code: 'write_failed');
+      if ([
+        ToMain.createNoteGroup,
+        ToMain.assignNotesToGroup,
+        ToMain.removeNotesFromGroup,
+      ].contains(method)) {
+        previous = Map.of(membership);
+      }
       if (method == ToMain.createNoteGroup) {
         created = true;
         final data = jsonDecode(args['arguments'] as String);
         for (final id in data['ids']) {
           membership[id as String] = 'created';
         }
-        return 'created';
+        return jsonEncode({'groupId': 'created', 'undoToken': 'receipt'});
       }
       if (method == ToMain.linkStickies) linked = true;
       if (method == ToMain.unlinkStickies) linked = false;
@@ -67,10 +76,16 @@ void main() {
           membership[id as String] = data['groupId'] as String;
         }
       }
-      if (method == ToMain.restoreNoteMemberships) {
-        final data = jsonDecode(args['arguments'] as String);
-        if (data['deleteGroupId'] != null) created = false;
-        membership.addAll((data['memberships'] as Map).cast<String, String?>());
+      if (method == ToMain.undoGroupChange) {
+        expect(args['arguments'], 'receipt');
+        created = false;
+        membership = Map.of(previous);
+      }
+      if ([
+        ToMain.assignNotesToGroup,
+        ToMain.removeNotesFromGroup,
+      ].contains(method)) {
+        return jsonEncode({'undoToken': 'receipt'});
       }
       return null;
     });

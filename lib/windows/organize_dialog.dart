@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../ipc.dart';
+import '../models/group_change.dart';
 import '../app_theme.dart';
 
 /// The same explicit organization controls for a memo and a bulk selection.
@@ -79,29 +80,29 @@ class _OrganizeDialogState extends State<OrganizeDialog> {
       if (!_ids.every(live.contains)) throw StateError('메모가 삭제되었습니다.');
       await action();
       await _load();
-    } catch (_) {
-      if (mounted) setState(() => _error = '변경하지 못했어요. 목록을 확인하고 다시 시도해 주세요.');
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _error = error is GroupChangeConflict
+              ? '다른 변경이 있어 실행 취소할 수 없어요. 현재 상태를 유지했어요.'
+              : '변경하지 못했어요. 목록을 확인하고 다시 시도해 주세요.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _assign(String? groupId, {String? newName}) => _run(() async {
-    final previous = _previous;
-    String? created;
+    final GroupChange change;
     if (newName != null) {
-      created = await _main.createNoteGroup(newName, _ids);
-      if (created == null) throw StateError('묶음 생성 실패');
+      change = await _main.createNoteGroup(newName, _ids);
     } else if (groupId == null) {
-      await _main.removeNotesFromGroup(_ids);
+      change = await _main.removeNotesFromGroup(_ids);
     } else {
-      if (!_rows('groups').any((g) => g['id'] == groupId)) {
-        throw StateError('묶음이 삭제되었습니다.');
-      }
-      await _main.assignNotesToGroup(groupId, _ids);
+      change = await _main.assignNotesToGroup(groupId, _ids);
     }
-    _undo = () =>
-        _main.restoreNoteMemberships(previous, deleteGroupId: created);
+    _undo = () => _main.undoGroupChange(change.undoToken);
     _message = newName != null
         ? '‘$newName’ 묶음을 만들었어요.'
         : groupId == null

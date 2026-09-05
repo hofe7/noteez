@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
+import '../models/group_change.dart';
 
 import '../app_theme.dart';
 import 'trash_dialog.dart';
@@ -663,31 +664,33 @@ class _OverviewWindowState extends State<OverviewWindow> {
     if (uniqueIds.length < 2) return;
     final name = await _askGroupName(title: '새 묶음 만들기', initial: initialName);
     if (name == null) return;
-    final previous = {for (final id in uniqueIds) id: _groupContaining(id)};
-    final groupId = await _main.createNoteGroup(name, uniqueIds);
-    if (groupId != null && mounted) {
-      _offerUndo('‘$name’ 묶음을 만들었어요.', () async {
-        await _main.restoreNoteMemberships(previous, deleteGroupId: groupId);
-      });
-    }
-    if (mounted) {
+    await _runGroupAction(() async {
+      final change = await _main.createNoteGroup(name, uniqueIds);
+      if (!mounted) return;
+      _offerUndo(
+        '‘$name’ 묶음을 만들었어요.',
+        () => _main.undoGroupChange(change.undoToken),
+      );
       setState(() {
         _selectionMode = false;
         _selectedIds.clear();
       });
-    }
+    });
   }
 
   Future<void> _renameGroup(Map<String, dynamic> group) async {
     final oldName = group['name'] as String;
     final name = await _askGroupName(title: '묶음 이름 바꾸기', initial: oldName);
     if (name != null) {
-      await _main.renameNoteGroup(group['id'] as String, name);
-      if (mounted) {
-        _offerUndo('묶음 이름을 ‘$name’(으)로 바꿨어요.', () async {
-          await _main.renameNoteGroup(group['id'] as String, oldName);
-        });
-      }
+      await _runGroupAction(() async {
+        final change = await _main.renameNoteGroup(group['id'] as String, name);
+        if (mounted) {
+          _offerUndo(
+            '묶음 이름을 ‘$name’(으)로 바꿨어요.',
+            () => _main.undoGroupChange(change.undoToken),
+          );
+        }
+      });
     }
   }
 
@@ -712,22 +715,15 @@ class _OverviewWindowState extends State<OverviewWindow> {
     if (confirmed == true) {
       final id = group['id'] as String;
       final name = group['name'] as String;
-      final members = ((group['memberIds'] as List?) ?? const [])
-          .cast<String>();
-      final collapsed = group['collapsed'] == true;
-      final position = group['position'] as int?;
-      await _main.deleteNoteGroup(id);
-      if (mounted) {
-        _offerUndo('‘$name’ 묶음을 삭제했어요. 메모는 그대로예요.', () async {
-          await _main.createNoteGroup(
-            name,
-            members,
-            requestedId: id,
-            collapsed: collapsed,
-            position: position,
+      await _runGroupAction(() async {
+        final change = await _main.deleteNoteGroup(id);
+        if (mounted) {
+          _offerUndo(
+            '‘$name’ 묶음을 삭제했어요. 메모는 그대로예요.',
+            () => _main.undoGroupChange(change.undoToken),
           );
-        });
-      }
+        }
+      });
     }
   }
 
@@ -746,6 +742,38 @@ class _OverviewWindowState extends State<OverviewWindow> {
     return '묶음';
   }
 
+  bool _groupBusy = false;
+
+  Future<void> _runGroupAction(Future<void> Function() action) async {
+    if (_groupBusy || !mounted) return;
+    _groupBusy = true;
+    try {
+      await action();
+    } catch (error) {
+      if (!mounted) return;
+      final conflict = error is GroupChangeConflict;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            conflict
+                ? '다른 변경이 있어 실행 취소할 수 없어요. 현재 상태를 유지했어요.'
+                : '변경하지 못했어요. 다시 시도해 주세요.',
+          ),
+          action: conflict
+              ? null
+              : SnackBarAction(
+                  label: '다시 시도',
+                  onPressed: () {
+                    _runGroupAction(action);
+                  },
+                ),
+        ),
+      );
+    } finally {
+      _groupBusy = false;
+    }
+  }
+
   void _offerUndo(String message, Future<void> Function() undo) {
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
@@ -756,37 +784,34 @@ class _OverviewWindowState extends State<OverviewWindow> {
         action: SnackBarAction(
           label: '실행 취소',
           onPressed: () {
-            undo();
+            _runGroupAction(undo);
           },
         ),
       ),
     );
   }
 
-  Future<void> _moveNote(String noteId, String groupId) async {
-    final previous = _groupContaining(noteId);
-    if (previous == groupId) return;
-    await _main.assignNotesToGroup(groupId, [noteId]);
-    if (!mounted) return;
-    _offerUndo('‘${_groupName(groupId)}’ 묶음으로 옮겼어요.', () async {
-      if (previous == null) {
-        await _main.removeNotesFromGroup([noteId]);
-      } else {
-        await _main.assignNotesToGroup(previous, [noteId]);
-      }
-    });
-  }
-
-  Future<void> _removeNoteFromGroup(String noteId) async {
-    final previous = _groupContaining(noteId);
-    if (previous == null) return;
-    await _main.removeNotesFromGroup([noteId]);
-    if (mounted) {
-      _offerUndo('메모를 묶음에서 뺐어요.', () async {
-        await _main.assignNotesToGroup(previous, [noteId]);
+  Future<void> _moveNote(String noteId, String groupId) =>
+      _runGroupAction(() async {
+        if (_groupContaining(noteId) == groupId) return;
+        final change = await _main.assignNotesToGroup(groupId, [noteId]);
+        if (mounted) {
+          _offerUndo(
+            '‘${_groupName(groupId)}’ 묶음으로 옮겼어요.',
+            () => _main.undoGroupChange(change.undoToken),
+          );
+        }
       });
+
+  Future<void> _removeNoteFromGroup(String noteId) => _runGroupAction(() async {
+    final change = await _main.removeNotesFromGroup([noteId]);
+    if (mounted) {
+      _offerUndo(
+        '메모를 묶음에서 뺐어요.',
+        () => _main.undoGroupChange(change.undoToken),
+      );
     }
-  }
+  });
 
   Widget _manualGroupCard(
     Map<String, dynamic> group,

@@ -266,10 +266,13 @@ void main() {
       await db.upsertNoteGroup(id: 'old', name: '기존', position: 0);
       await db.upsertNoteGroup(id: 'created', name: '새 묶음', position: 1);
       await db.assignNotesToGroup('created', notes.map((n) => n.id));
-      await db.restoreNoteMemberships({
-        notes[0].id: 'old',
-        notes[1].id: null,
-      }, deleteGroupId: 'created');
+      await db.restoreNoteMemberships(
+        {notes[0].id: 'old', notes[1].id: null},
+        deleteGroupId: 'created',
+        expectedRevisions: {
+          for (final n in notes.take(2)) n.id: db.membershipRevision(n.id),
+        },
+      );
       final members = {
         for (final m in await db.allGroupMembers()) m.stickyId: m.groupId,
       };
@@ -278,9 +281,11 @@ void main() {
         (await db.allActiveGroups()).map((g) => g.id),
         contains('created'),
       );
-      await db.restoreNoteMemberships({
-        notes[2].id: null,
-      }, deleteGroupId: 'created');
+      await db.restoreNoteMemberships(
+        {notes[2].id: null},
+        deleteGroupId: 'created',
+        expectedRevisions: {notes[2].id: db.membershipRevision(notes[2].id)},
+      );
       expect(
         (await db.allActiveGroups()).map((g) => g.id),
         isNot(contains('created')),
@@ -300,7 +305,13 @@ void main() {
       await db.upsertNoteGroup(id: 'old', name: '이전', position: 1);
       await db.assignNotesToGroup('current', [a.id, b.id]);
       await expectLater(
-        db.restoreNoteMemberships({a.id: null, b.id: 'missing'}),
+        db.restoreNoteMemberships(
+          {a.id: null, b.id: 'missing'},
+          expectedRevisions: {
+            a.id: db.membershipRevision(a.id),
+            b.id: db.membershipRevision(b.id),
+          },
+        ),
         throwsStateError,
       );
       expect(
@@ -311,7 +322,13 @@ void main() {
         "CREATE TRIGGER reject_restore BEFORE INSERT ON group_members WHEN NEW.group_id = 'old' BEGIN SELECT RAISE(ABORT, 'test failure'); END",
       );
       await expectLater(
-        db.restoreNoteMemberships({a.id: null, b.id: 'old'}),
+        db.restoreNoteMemberships(
+          {a.id: null, b.id: 'old'},
+          expectedRevisions: {
+            a.id: db.membershipRevision(a.id),
+            b.id: db.membershipRevision(b.id),
+          },
+        ),
         throwsA(anything),
       );
       final members = await db.allGroupMembers();

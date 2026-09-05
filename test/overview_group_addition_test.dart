@@ -11,6 +11,8 @@ void main() {
     'existing group offers explained addition, undo and persistent rejection',
     (tester) async {
       final calls = <Map>[];
+      var failMove = false;
+      var conflictUndo = false;
       const windowChannel = MethodChannel('mixin.one/desktop_multi_window');
       const channels = MethodChannel('mixin.one/desktop_multi_window/channels');
       final messenger =
@@ -22,7 +24,17 @@ void main() {
         return null;
       });
       messenger.setMockMethodCallHandler(channels, (call) async {
-        if (call.method == 'invokeMethod') calls.add(call.arguments as Map);
+        if (call.method == 'invokeMethod') {
+          calls.add(call.arguments as Map);
+          if ((call.arguments as Map)['method'] == ToMain.undoGroupChange &&
+              conflictUndo) {
+            throw PlatformException(code: 'group_conflict');
+          }
+          if ((call.arguments as Map)['method'] == ToMain.assignNotesToGroup) {
+            if (failMove) throw PlatformException(code: 'write_failed');
+            return jsonEncode({'undoToken': 'receipt'});
+          }
+        }
         return null;
       });
       addTearDown(
@@ -112,7 +124,7 @@ void main() {
       await tester.tap(find.text('실행 취소'));
       await tester.pumpAndSettle();
       expect(
-        calls.any((call) => call['method'] == ToMain.removeNotesFromGroup),
+        calls.any((call) => call['method'] == ToMain.undoGroupChange),
         isTrue,
       );
       await tester.tap(find.byTooltip('이 묶음에 추천하지 않기'));
@@ -132,6 +144,18 @@ void main() {
         calls.any((call) => call['method'] == ToMain.resetGroupSuggestions),
         isTrue,
       );
+      failMove = true;
+      await tester.tap(find.text('추가'));
+      await tester.pumpAndSettle();
+      expect(find.text('변경하지 못했어요. 다시 시도해 주세요.'), findsOneWidget);
+      failMove = false;
+      await tester.tap(find.text('다시 시도'));
+      await tester.pumpAndSettle();
+      conflictUndo = true;
+      await tester.tap(find.text('실행 취소'));
+      await tester.pumpAndSettle();
+      expect(calls.last['method'], ToMain.undoGroupChange);
+      expect(find.textContaining('다른 변경이 있어'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
