@@ -89,6 +89,26 @@ class BackupService {
   final int maxAutomaticBackups;
   final Future<void> Function()? beforeSnapshot;
 
+  // Shared across instances so two windows cannot rotate, stage or replace
+  // the same backup files concurrently. Internal calls bypass this queue.
+  static Future<void> _operationTail = Future.value();
+  static Future<T> _serialized<T>(Future<T> Function() action) {
+    final result = _operationTail.then((_) => action());
+    _operationTail = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return result;
+  }
+
+  Future<BackupResult?> createAutomaticBackup() =>
+      _serialized(_createAutomaticBackup);
+  Future<BackupResult?> createBackup(String destinationPath) =>
+      _serialized(() => _createBackup(destinationPath));
+  Future<RestoreResult> stageRestore(String zipPath) =>
+      _serialized(() => _stageRestore(zipPath));
+  Future<bool> applyPendingRestore() => _serialized(_applyPendingRestore);
+
   Future<String> automaticBackupDirectoryPath() async {
     final support = await _supportDirectory();
     final root = Directory(p.join(support.path, 'backups'));
@@ -132,18 +152,18 @@ class BackupService {
 
   /// Creates a rotating backup in the app support directory. A missing DB is
   /// normal on the very first launch and simply produces no backup.
-  Future<BackupResult?> createAutomaticBackup() async {
+  Future<BackupResult?> _createAutomaticBackup() async {
     final support = await _supportDirectory();
     final root = Directory(p.join(support.path, 'backups'));
     await root.create(recursive: true);
-    final result = await createBackup(
+    final result = await _createBackup(
       await _uniqueBackupPath(root, _backupName(_now())),
     );
     await _rotateAutomaticBackups(root);
     return result;
   }
 
-  Future<BackupResult?> createBackup(String destinationPath) async {
+  Future<BackupResult?> _createBackup(String destinationPath) async {
     await beforeSnapshot?.call();
     final documents = await _documentsDirectory();
     final sourceFile = File(p.join(documents.path, 'noteez.sqlite'));
@@ -194,7 +214,7 @@ class BackupService {
 
   /// Validates and stages a restore. The live database is never replaced while
   /// Noteez is running; [applyPendingRestore] performs the swap on next launch.
-  Future<RestoreResult> stageRestore(String zipPath) async {
+  Future<RestoreResult> _stageRestore(String zipPath) async {
     final inputFile = File(zipPath);
     if (!await inputFile.exists()) {
       throw const FormatException('백업 파일을 찾을 수 없습니다.');
@@ -210,7 +230,7 @@ class BackupService {
       final selectedCopy = await inputFile.copy(
         p.join(extracted.path, 'selected.zip'),
       );
-      await createAutomaticBackup();
+      await _createAutomaticBackup();
       final contents = Directory(p.join(extracted.path, 'contents'));
       await contents.create();
       await extractZipSafely(selectedCopy.path, contents.path);
@@ -265,7 +285,7 @@ class BackupService {
   }
 
   /// Applies a previously validated restore before Drift opens the database.
-  Future<bool> applyPendingRestore() async {
+  Future<bool> _applyPendingRestore() async {
     final support = await _supportDirectory();
     final pending = Directory(
       p.join(support.path, 'backups', 'pending-restore'),

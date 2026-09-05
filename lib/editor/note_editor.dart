@@ -2,9 +2,12 @@
 // 안정 동작이라 의도적으로 사용한다.
 // ignore_for_file: experimental_member_use
 import 'dart:io';
+import 'dart:async';
+import 'pasted_image_store.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:pasteboard/pasteboard.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' hide Block;
 import 'package:flutter_quill/quill_delta.dart';
@@ -19,12 +22,14 @@ import 'note_delta.dart';
 /// 직전 블록과 매칭해 보존한다(체크 유지=시각 유지, 새로 체크=now).
 class NoteEditor extends StatefulWidget {
   final List<Block> initial;
+  final PastedImageStore? imageStore;
   final ValueChanged<List<Block>> onChanged;
   final bool autofocus;
   final Color accent; // 체크박스 등 강조색 (포스트잇 색조의 진한 잉크)
   const NoteEditor({
     super.key,
     required this.initial,
+    this.imageStore,
     required this.onChanged,
     this.autofocus = false,
     this.accent = const Color(0xFF8A6418),
@@ -40,6 +45,10 @@ class NoteEditorState extends State<NoteEditor> {
   final ScrollController _scroll = ScrollController();
   late List<Block> _prev;
   bool _stampingMetadata = false;
+  bool _pasting = false;
+  bool _savingImage = false;
+  final _imageStore = PastedImageStore();
+  static const _pasteChannel = MethodChannel('noteez/paste');
 
   QuillController get controller => _controller;
 
@@ -61,10 +70,31 @@ class NoteEditorState extends State<NoteEditor> {
       NoteDelta.fromBlocks(widget.initial).toJson(),
     );
     _controller = QuillController(
+      config: QuillControllerConfig(
+        clipboardConfig: QuillClipboardConfig(
+          enableExternalRichPaste: false,
+          onClipboardPaste: _pasteImage,
+        ),
+      ),
       document: doc,
       selection: const TextSelection.collapsed(offset: 0),
     );
     _controller.addListener(_onChange);
+    _focus.addListener(_syncPasteFocus);
+    _pasteChannel.setMethodCallHandler((call) async {
+      if (call.method != 'paste') throw MissingPluginException();
+      if (!_focus.hasFocus || _pasting) return false;
+      _pasting = true;
+      try {
+        await _controller.clipboardPaste();
+      } catch (error) {
+        debugPrint('[paste] failed: $error');
+        _pasteError();
+      } finally {
+        _pasting = false;
+      }
+      return true;
+    });
     // autoFocus를 config로 주면 레이아웃 전에 IME가 열리며 RenderEditor.size를 읽어
     // 터진다(scrollable:false). 레이아웃 끝난 다음 프레임에 포커스를 준다.
     if (widget.autofocus) {
@@ -72,6 +102,58 @@ class NoteEditorState extends State<NoteEditor> {
         if (mounted) _focus.requestFocus();
       });
     }
+  }
+
+  Future<bool> _pasteImage() async {
+    if (_savingImage) return true;
+    _savingImage = true;
+    final selection = _controller.selection;
+    final before = jsonEncode(_controller.document.toDelta().toJson());
+    try {
+      final bytes = await Pasteboard.image;
+      if (!mounted) return true;
+      if (bytes == null) {
+        return false; // Quill handles text/internal checklist copy.
+      }
+      final path = await (widget.imageStore ?? _imageStore).save(bytes);
+      if (!mounted) return true;
+      // Do not apply an old selection after editing or navigating while writing.
+      if (_controller.selection != selection ||
+          jsonEncode(_controller.document.toDelta().toJson()) != before) {
+        _pasteError();
+        return true;
+      }
+      _controller.replaceText(
+        selection.start,
+        selection.end - selection.start,
+        BlockEmbed.image(path),
+        TextSelection.collapsed(offset: selection.start + 1),
+      );
+      return true;
+    } on MissingPluginException {
+      return false; // Text still works on platforms without image clipboard support.
+    } catch (error) {
+      debugPrint('[paste] image failed: $error');
+      _pasteError();
+      return true;
+    } finally {
+      _savingImage = false;
+    }
+  }
+
+  void _pasteError() {
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(content: Text('붙여넣지 못했어요. 원본을 다시 복사해 주세요.')),
+    );
+  }
+
+  void _syncPasteFocus() {
+    unawaited(
+      _pasteChannel
+          .invokeMethod<void>('setEnabled', _focus.hasFocus)
+          .catchError((Object _) {}),
+    );
   }
 
   /// 줄 맨 앞에서 백스페이스 → 그 줄의 블록 포맷(체크리스트/리스트 등) 제거 후
@@ -175,6 +257,13 @@ class NoteEditorState extends State<NoteEditor> {
 
   @override
   void dispose() {
+    _focus.removeListener(_syncPasteFocus);
+    unawaited(
+      _pasteChannel
+          .invokeMethod<void>('setEnabled', false)
+          .catchError((Object _) {}),
+    );
+    _pasteChannel.setMethodCallHandler(null);
     _controller.removeListener(_onChange);
     _controller.dispose();
     _focus.dispose();

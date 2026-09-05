@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../ipc.dart';
 import '../models/group_change.dart';
+import '../models/link_change.dart';
 import '../app_theme.dart';
 
 /// The same explicit organization controls for a memo and a bulk selection.
@@ -83,7 +84,8 @@ class _OrganizeDialogState extends State<OrganizeDialog> {
     } catch (error) {
       if (mounted) {
         setState(
-          () => _error = error is GroupChangeConflict
+          () => _error =
+              error is GroupChangeConflict || error is LinkChangeConflict
               ? '다른 변경이 있어 실행 취소할 수 없어요. 현재 상태를 유지했어요.'
               : '변경하지 못했어요. 목록을 확인하고 다시 시도해 주세요.',
         );
@@ -120,14 +122,9 @@ class _OrganizeDialogState extends State<OrganizeDialog> {
 
   Future<void> _toggleLink(String other) => _run(() async {
     final linked = _linked(other);
-    if (linked) {
-      await _main.unlinkStickies(_ids.single, other);
-    } else {
-      await _main.linkStickies(_ids.single, other);
-    }
-    _undo = () => linked
-        ? _main.linkStickies(_ids.single, other)
-        : _main.unlinkStickies(_ids.single, other);
+    final change = await _main.changeLink(_ids.single, other, !linked);
+    final token = change.undoToken;
+    _undo = token == null ? null : () => _main.undoLinkChange(token);
     _message = linked ? '참고 연결을 해제했어요.' : '참고 메모로 연결했어요.';
   });
 

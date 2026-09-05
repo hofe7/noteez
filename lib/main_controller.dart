@@ -1,3 +1,5 @@
+import 'services/link_service.dart';
+import 'models/link_change.dart';
 import 'services/note_save_service.dart';
 import 'services/group_service.dart';
 import 'models/group_change.dart';
@@ -7,7 +9,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
-import 'package:uuid/uuid.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:window_manager/window_manager.dart';
@@ -18,7 +19,7 @@ import 'db/database.dart';
 import 'huggingface_model_search.dart';
 import 'ipc.dart';
 import 'link_graph.dart';
-import 'markdown/import_merge.dart';
+import 'services/markdown_import_service.dart';
 import 'markdown/markdown_portability.dart';
 import 'model_manager.dart';
 import 'models/sticky.dart';
@@ -28,14 +29,19 @@ import 'reminder/reminder_scheduler.dart';
 import 'report.dart';
 import 'sticky_search.dart';
 
-const _uuid = Uuid();
-
 /// 메인 프로세스 = 권위자. 상태 + Drift(SQLite) 영속화 소유, 스티커 창 생성/추적.
 class MainController extends ChangeNotifier {
-  MainController({AppDatabase? database, ReminderScheduler? reminders})
-    : _db = database ?? AppDatabase(),
-      _injectedReminders = reminders;
+  MainController({
+    AppDatabase? database,
+    ReminderScheduler? reminders,
+    Future<void> Function(Sticky)? deliverReminder,
+  }) : _db = database ?? AppDatabase(),
+       _injectedReminders = reminders,
+       _deliverReminderOverride = deliverReminder;
   final ReminderScheduler? _injectedReminders;
+  final Future<void> Function(Sticky)? _deliverReminderOverride;
+  final Map<String, int> _reminderRevisions = {};
+  bool _closing = false;
 
   final AppDatabase _db;
   late final GroupService _groups = GroupService(_db);
@@ -71,6 +77,16 @@ class MainController extends ChangeNotifier {
 
   /// 승인된 연결(지식 그래프). 인접/묶음 알고리즘은 LinkGraph 가 담당.
   final LinkGraph _graph = LinkGraph();
+  late final LinkService _links = LinkService(
+    _db,
+    publish: (a, b, linked) {
+      if (linked) {
+        _graph.addEdge(a, b);
+      } else {
+        _graph.removeEdge(a, b);
+      }
+    },
+  );
   final MarkdownPortability _markdown = MarkdownPortability();
   final List<NoteGroupRow> _noteGroups = [];
   final Map<String, GroupMemberRow> _groupMembers = {};
@@ -84,7 +100,13 @@ class MainController extends ChangeNotifier {
 
   /// 리마인더 타이머. 발화 시 알림(best-effort) 또는 자동 소환.
   late final ReminderScheduler _reminders =
-      _injectedReminders ?? ReminderScheduler(_fireReminder);
+      _injectedReminders ??
+      ReminderScheduler(
+        deliverDueReminder,
+        onError: (error, stack) {
+          debugPrint('[reminder] delivery failed; will retry: $error');
+        },
+      );
   final ReminderNotifier _notifier = ReminderNotifier();
 
   /// 검색 팔레트(메인 창)를 열 때마다 틱. 팔레트가 듣고 초기화+포커스.
@@ -177,22 +199,51 @@ class MainController extends ChangeNotifier {
     if (_conn.modelId != null) _beginReindex();
   }
 
-  /// 리마인더 발화: 그 스티커를 desk 로 소환 + one-shot 으로 remindAt 비움.
-  /// (best-effort 알림은 Phase C 에서 얹음.)
-  Future<void> _fireReminder(String id) async {
-    final i = stickies.indexWhere((e) => e.id == id);
-    if (i == -1) return;
-    await _noteSaves.update(id, (note) => note.copyWith(clearRemind: true));
-    final s = _stickyOf(id);
-    if (s == null) return;
-    // 알림 가능하면 알림(클릭 시 소환), 아니면 자동 소환 폴백(권한 불필요, 항상 동작).
-    if (_notifier.granted) {
-      await _notifier.show(id, '⏰ ${s.preview}', '리마인더');
-    } else {
-      await showOne(id, focus: false); // 폴백: 떠오르되 커서는 안 뺏음
+  /// Reservation stays durable until delivery succeeds. A later edit wins.
+  Future<void> deliverDueReminder(String id) async {
+    final note = _stickyOf(id);
+    final at = note?.remindAt;
+    if (_closing ||
+        note == null ||
+        at == null ||
+        at > DateTime.now().millisecondsSinceEpoch) {
+      return;
     }
-    notifyListeners();
-    _pushOverview();
+    final revision = _reminderRevisions[id] ?? 0;
+    final deliver = _deliverReminderOverride;
+    if (deliver != null) {
+      await deliver(note);
+    } else {
+      var shown = false;
+      final canShow = await _notifier.canShow();
+      if (_closing ||
+          _stickyOf(id)?.remindAt != at ||
+          (_reminderRevisions[id] ?? 0) != revision) {
+        return;
+      }
+      if (canShow) {
+        try {
+          await _notifier.show(id, '⏰ ${note.preview}', '리마인더');
+          shown = true;
+        } catch (error) {
+          debugPrint('[reminder] notification failed; opening memo: $error');
+        }
+      }
+      if (!shown &&
+          !_closing &&
+          _stickyOf(id)?.remindAt == at &&
+          (_reminderRevisions[id] ?? 0) == revision) {
+        await showOne(id, focus: false);
+      }
+    }
+    if (_closing) return;
+    await _noteSaves.update(
+      id,
+      (current) =>
+          current.remindAt == at && (_reminderRevisions[id] ?? 0) == revision
+          ? current.copyWith(clearRemind: true)
+          : current,
+    );
   }
 
   ({String a, String b}) _orderedPair(String a, String b) =>
@@ -228,15 +279,7 @@ class MainController extends ChangeNotifier {
 
   Future<bool> _linkPair(String a, String b) async {
     if (a == b || _stickyOf(a) == null || _stickyOf(b) == null) return false;
-    if (_graph.neighbors(a).contains(b)) return false;
-    await _db.insertLink(
-      _uuid.v4(),
-      a,
-      b,
-      DateTime.now().millisecondsSinceEpoch,
-    );
-    _graph.addEdge(a, b);
-    return true;
+    return (await _links.set(a, b, true)).undoToken != null;
   }
 
   Future<void> _linkIds(List<String> rawIds) async {
@@ -284,8 +327,7 @@ class MainController extends ChangeNotifier {
   }
 
   Future<void> _unlinkPair(String a, String b) async {
-    await _db.softDeleteLinkBetween(a, b);
-    _graph.removeEdge(a, b);
+    await _links.set(a, b, false);
     _refreshConnections();
     _pushOverview();
   }
@@ -444,6 +486,35 @@ class MainController extends ChangeNotifier {
         }
         await _reloadNoteGroups();
         _pushOverview();
+      case ToMain.changeLink:
+        final data =
+            jsonDecode(call.arguments as String) as Map<String, dynamic>;
+        try {
+          final result = await _links.set(
+            data['a'] as String,
+            data['b'] as String,
+            data['linked'] as bool,
+          );
+          _refreshConnections();
+          _pushOverview();
+          return result.encode();
+        } on LinkChangeConflict catch (error) {
+          throw PlatformException(
+            code: 'link_conflict',
+            message: error.toString(),
+          );
+        }
+      case ToMain.undoLinkChange:
+        try {
+          await _links.undo(call.arguments as String);
+        } on LinkChangeConflict catch (error) {
+          throw PlatformException(
+            code: 'link_conflict',
+            message: error.toString(),
+          );
+        }
+        _refreshConnections();
+        _pushOverview();
       case ToMain.linkStickies:
         final m = jsonDecode(call.arguments as String) as Map<String, dynamic>;
         final a = m['a'] as String;
@@ -546,6 +617,7 @@ class MainController extends ChangeNotifier {
         final i = stickies.indexWhere((e) => e.id == id);
         if (i != -1) {
           await _noteSaves.update(id, (note) => note.copyWith(remindAt: at));
+          _reminderRevisions[id] = (_reminderRevisions[id] ?? 0) + 1;
           _reminders.schedule(id, at);
           notifyListeners();
           _pushOverview();
@@ -558,6 +630,7 @@ class MainController extends ChangeNotifier {
             id,
             (note) => note.copyWith(clearRemind: true),
           );
+          _reminderRevisions[id] = (_reminderRevisions[id] ?? 0) + 1;
           _reminders.cancel(id);
           notifyListeners();
           _pushOverview();
@@ -729,162 +802,54 @@ class MainController extends ChangeNotifier {
     })
   >
   _storeMarkdownImports(MarkdownImportBatch batch) async {
-    final changed = <Sticky>[];
-    final bySourcePath = <String, String>{};
-    final importedGroups = <String, ({String? groupId, String? groupName})>{};
-    var imported = 0;
-    var updated = 0;
-    var skipped = 0;
-    var conflicted = 0;
-    for (final note in batch.notes) {
-      final origin = await _db.importOrigin(note.sourceKey);
-      final existing = origin == null ? null : _stickyOf(origin.stickyId);
-      var updateOrigin = true;
-      Sticky sticky;
-      final decision = decideMarkdownImport(
-        hasOrigin: origin != null,
-        hasSticky: existing != null,
-        isBeingEdited: existing?.open == true,
-        sourceUnchanged: origin?.sourceHash == note.sourceHash,
-        stickyUnchangedSinceImport:
-            origin != null &&
-            existing != null &&
-            _conn.documentHash(existing) == origin.stickyHash,
-      );
-      if (decision == MarkdownImportDecision.skip) {
-        sticky = existing!;
-        skipped++;
-        // 같은 원본을 다시 고른 것뿐이다. 사용자가 Noteez에서 편집했더라도
-        // 최초 import 시점의 stickyHash를 유지해야 다음 원본 변경 때 덮어쓰기
-        // 여부를 정확히 판정할 수 있다.
-        updateOrigin = false;
-      } else if (decision == MarkdownImportDecision.update) {
-        sticky = existing!.copyWith(
-          blocks: _importBlocks(note),
-          updatedAt: note.metadata.updatedAt ?? DateTime.now(),
-        );
-        await _noteSaves.save(sticky);
-        changed.add(sticky);
-        updated++;
-      } else if (decision == MarkdownImportDecision.preserveBoth) {
-        sticky = _newImportedSticky(note);
-        await _db.upsert(sticky);
-        stickies.add(sticky);
-        changed.add(sticky);
-        imported++;
-        conflicted++;
-      } else {
-        final externalId = note.metadata.noteezId;
-        final sameId = externalId == null ? null : _stickyOf(externalId);
-        if (sameId != null &&
-            _conn.documentHash(sameId) ==
-                _conn.documentHash(_newImportedSticky(note, id: externalId))) {
-          sticky = sameId;
-          skipped++;
-        } else {
-          sticky = _newImportedSticky(
-            note,
-            id: externalId != null && sameId == null ? externalId : null,
-          );
-          await _db.upsert(sticky);
-          stickies.add(sticky);
-          changed.add(sticky);
-          imported++;
+    late ImportSummary result;
+    try {
+      result = await _noteSaves.exclusive(() async {
+        final result = await MarkdownImportService(
+          _db,
+          documentHash: _conn.documentHash,
+        ).store(batch);
+        // Publish only committed state, while queued editor writes wait their turn.
+        stickies
+          ..clear()
+          ..addAll(await _db.allActive());
+        for (final edge in _graph.uniqueEdges()) {
+          _graph.removeEdge(edge.a, edge.b);
         }
-      }
-      bySourcePath[note.sourcePath] = sticky.id;
-      if (decision != MarkdownImportDecision.skip &&
-          (note.metadata.noteezGroupId != null ||
-              note.metadata.noteezGroupName != null)) {
-        importedGroups[sticky.id] = (
-          groupId: note.metadata.noteezGroupId,
-          groupName: note.metadata.noteezGroupName,
-        );
-      }
-      if (updateOrigin) {
-        await _db.upsertImportOrigin(
-          sourceKey: note.sourceKey,
-          stickyId: sticky.id,
-          sourceHash: note.sourceHash,
-          stickyHash: _conn.documentHash(sticky),
-        );
-      }
-    }
-
-    var linked = 0;
-    for (final link in batch.links) {
-      final a = bySourcePath[link.sourcePath];
-      final b = bySourcePath[link.targetPath];
-      if (a != null && b != null && await _linkPair(a, b)) linked++;
-    }
-    // 한 파일만 가져온 경우에도 [[기존 메모]] / Existing.md 링크를 복원한다.
-    // 같은 제목이 둘 이상이면 모호하므로 자동 연결하지 않는다.
-    final idsByTitle = <String, List<String>>{};
-    for (final sticky in stickies) {
-      final title = sticky.preview.trim().toLowerCase();
-      if (title.isNotEmpty) (idsByTitle[title] ??= []).add(sticky.id);
-    }
-    for (final note in batch.notes) {
-      final sourceId = bySourcePath[note.sourcePath];
-      if (sourceId == null) continue;
-      for (final reference in note.references) {
-        final title = _markdown.referenceTitle(reference).toLowerCase();
-        final candidates = idsByTitle[title];
-        if (candidates?.length == 1 &&
-            await _linkPair(sourceId, candidates!.single)) {
-          linked++;
+        for (final link in await _db.allActiveLinks()) {
+          _graph.addEdge(link.aId, link.bId);
         }
+        await _reloadNoteGroups();
+        notifyListeners();
+        _pushOverview();
+        _beginReindex();
+        return result;
+      });
+    } on MarkdownImportFailure catch (error) {
+      _overviewNotice = error.toString();
+      try {
+        await openOverview();
+      } catch (_) {
+      } finally {
+        _overviewNotice = null;
       }
+      rethrow;
     }
-
-    var groupsChanged = false;
-    final restoredGroupIds = <String, String>{};
-    for (final entry in importedGroups.entries) {
-      final metadata = entry.value;
-      final sourceKey = metadata.groupId?.trim().isNotEmpty == true
-          ? 'id:${metadata.groupId!.trim()}'
-          : 'name:${(metadata.groupName ?? '').trim().toLowerCase()}';
-      var groupId = restoredGroupIds[sourceKey];
-      if (groupId == null) {
-        final requestedId = metadata.groupId?.trim();
-        NoteGroupRow? existing;
-        for (final group in _noteGroups) {
-          if ((requestedId?.isNotEmpty == true && group.id == requestedId) ||
-              (requestedId?.isNotEmpty != true &&
-                  group.name.toLowerCase() ==
-                      (metadata.groupName ?? '').trim().toLowerCase())) {
-            existing = group;
-            break;
-          }
-        }
-        groupId = existing?.id;
-        groupId ??= await _groups.importGroup(
-          metadata.groupName ?? '가져온 묶음',
-          requestedId: requestedId,
-        );
-        restoredGroupIds[sourceKey] = groupId;
-      }
-      await _db.assignNotesToGroup(groupId, [entry.key]);
-      groupsChanged = true;
-    }
-    if (groupsChanged) await _reloadNoteGroups();
-
-    if (changed.isNotEmpty || linked > 0 || groupsChanged) {
-      notifyListeners();
-      _pushOverview();
-      _beginReindex();
-    }
-    final result = (
-      imported: imported,
-      updated: updated,
-      skipped: skipped,
-      conflicted: conflicted,
-      linked: linked,
-      failed: batch.failedPaths.length,
-    );
     _overviewNotice = _importSummary(result);
+    if (batch.failedPaths.isNotEmpty) {
+      final names = batch.failedPaths
+          .take(5)
+          .map((path) => path.replaceAll('\\', '/').split('/').last)
+          .join(', ');
+      _overviewNotice =
+          '$_overviewNotice\n읽지 못한 파일: $names${batch.failedPaths.length > 5 ? ' 외 ${batch.failedPaths.length - 5}개' : ''} · 원본을 확인하고 다시 가져와 주세요.';
+    }
     if (batch.notes.isNotEmpty || batch.failedPaths.isNotEmpty) {
-      await openOverview();
+      try {
+        await openOverview();
+      } catch (error) {
+        debugPrint('[import] committed; overview could not open: $error');
+      }
     }
     _overviewNotice = null;
     return result;
@@ -909,24 +874,6 @@ class MainController extends ChangeNotifier {
     if (result.linked > 0) '연결 복원 ${result.linked}개',
     if (result.failed > 0) '실패 ${result.failed}개',
   ].join(' · ');
-
-  List<Block> _importBlocks(ImportedMarkdownNote note) =>
-      note.blocks.isEmpty ? [textBlock(note.title)] : note.blocks;
-
-  Sticky _newImportedSticky(ImportedMarkdownNote note, {String? id}) {
-    final n = stickies.length;
-    final now = DateTime.now();
-    return Sticky(
-      id: id ?? _uuid.v4(),
-      blocks: _importBlocks(note),
-      colorIndex: (note.metadata.colorIndex ?? n % 6).clamp(0, 5),
-      x: 200 + n * 26.0,
-      y: 180 + n * 26.0,
-      open: false,
-      createdAt: note.metadata.createdAt ?? now,
-      updatedAt: note.metadata.updatedAt ?? now,
-    );
-  }
 
   Future<MarkdownExportResult?> exportAllMarkdown() => _markdown.exportAll(
     List<Sticky>.unmodifiable(stickies),
@@ -986,8 +933,11 @@ class MainController extends ChangeNotifier {
   }
 
   Future<void> shutdown() async {
+    if (_closing) return;
     await flushPendingWrites();
+    _closing = true;
     _reminders.dispose();
+    await _links.flush();
     await _conn.close();
     await _db.close();
   }

@@ -30,7 +30,8 @@ class ReminderNotifier {
       );
       final ok = await _fln
           .resolvePlatformSpecificImplementation<
-              MacOSFlutterLocalNotificationsPlugin>()
+            MacOSFlutterLocalNotificationsPlugin
+          >()
           ?.requestPermissions(alert: true, badge: false, sound: true);
       _granted = ok ?? false;
     } catch (e) {
@@ -40,12 +41,28 @@ class ReminderNotifier {
     debugPrint('[notifier] granted=$_granted');
   }
 
+  /// Recheck without requesting permission: users may change Settings while
+  /// the app runs. A silent/no-alert configuration uses the memo fallback.
+  Future<bool> canShow() async {
+    try {
+      final permissions = await _fln
+          .resolvePlatformSpecificImplementation<
+            MacOSFlutterLocalNotificationsPlugin
+          >()
+          ?.checkPermissions();
+      return _granted =
+          permissions?.isEnabled == true && permissions?.isAlertEnabled == true;
+    } catch (_) {
+      return _granted = false;
+    }
+  }
+
   /// 알림 표시. payload=스티커 id(클릭 시 소환). granted=false면 호출 안 됨.
   Future<void> show(String id, String title, String body) => _fln.show(
-        id.hashCode & 0x7fffffff,
-        title,
-        body,
-        const NotificationDetails(macOS: DarwinNotificationDetails()),
-        payload: id,
-      );
+    id.hashCode & 0x7fffffff,
+    title,
+    body,
+    const NotificationDetails(macOS: DarwinNotificationDetails()),
+    payload: id,
+  );
 }

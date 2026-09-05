@@ -18,6 +18,8 @@ void main() {
   late bool created;
   late Map<String, String?> previous;
   late bool fail;
+  late bool previousLink;
+  late bool linkConflict;
   late List<String> calls;
   setUp(() {
     created = false;
@@ -25,6 +27,8 @@ void main() {
     previous = Map.of(membership);
     linked = false;
     fail = false;
+    previousLink = false;
+    linkConflict = false;
     calls = [];
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method != 'invokeMethod') return null;
@@ -67,6 +71,16 @@ void main() {
           membership[id as String] = 'created';
         }
         return jsonEncode({'groupId': 'created', 'undoToken': 'receipt'});
+      }
+      if (method == ToMain.changeLink) {
+        previousLink = linked;
+        linked = jsonDecode(args['arguments'] as String)['linked'] as bool;
+        return jsonEncode({'undoToken': 'link-receipt'});
+      }
+      if (method == ToMain.undoLinkChange) {
+        if (linkConflict) throw PlatformException(code: 'link_conflict');
+        expect(args['arguments'], 'link-receipt');
+        linked = previousLink;
       }
       if (method == ToMain.linkStickies) linked = true;
       if (method == ToMain.unlinkStickies) linked = false;
@@ -152,7 +166,7 @@ void main() {
     await tester.tap(find.widgetWithText(TextButton, '연결').last);
     await tester.pumpAndSettle();
     expect(linked, isTrue);
-    expect(calls, [ToMain.linkStickies]);
+    expect(calls, [ToMain.changeLink]);
     await tester.tap(find.text('해제'));
     await tester.pumpAndSettle();
     expect(linked, isFalse);
@@ -160,6 +174,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(linked, isTrue);
     expect(tester.takeException(), isNull);
+  });
+  testWidgets('stale link undo explains the conflict and keeps current state', (
+    tester,
+  ) async {
+    await open(tester, ['a']);
+    await tester.tap(find.text('연결').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, '연결').last);
+    await tester.pumpAndSettle();
+    linkConflict = true;
+    await tester.tap(find.text('실행 취소'));
+    await tester.pumpAndSettle();
+    expect(linked, isTrue);
+    expect(find.textContaining('다른 변경이 있어'), findsOneWidget);
+    expect(calls.last, ToMain.undoLinkChange);
   });
   testWidgets('bulk move restores separate original memberships on undo', (
     tester,

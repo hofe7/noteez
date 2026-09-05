@@ -33,6 +33,32 @@ void main() {
   });
 
   test(
+    'concurrent backups across instances reserve different paths and remain restorable',
+    () async {
+      final db = AppDatabase.forTesting(
+        NativeDatabase(File(p.join(documents.path, 'noteez.sqlite'))),
+      );
+      await db.upsert(
+        makeSticky(x: 0, y: 0, blocks: [textBlock('backup concurrency')]),
+      );
+      await db.close();
+      final second = BackupService(
+        documentsDirectory: () async => documents,
+        supportDirectory: () async => support,
+        now: () => DateTime(2026, 9, 4, 12, 30),
+      );
+      final results = await Future.wait([
+        service.createAutomaticBackup(),
+        second.createAutomaticBackup(),
+      ]);
+      expect(results.map((r) => r!.path).toSet(), hasLength(2));
+      for (final result in results) {
+        expect((await service.stageRestore(result!.path)).noteCount, 1);
+      }
+    },
+  );
+
+  test(
     'schema 12 backup preserves content time, welcome state and group rejection',
     () async {
       final file = File(p.join(documents.path, 'noteez.sqlite'));

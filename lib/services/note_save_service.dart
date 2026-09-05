@@ -21,6 +21,13 @@ class NoteSaveService {
       });
   Future<void> flush() => _tail;
 
+  /// An atomic multi-note operation shares the editor commit queue.
+  Future<T> exclusive<T>(Future<T> Function() action) {
+    final operation = _tail.then((_) => action());
+    _tail = operation.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return operation;
+  }
+
   Future<void> _enqueue(Sticky? Function() next) {
     final operation = _tail.then((_) async {
       final note = next();

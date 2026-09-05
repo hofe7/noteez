@@ -1,3 +1,4 @@
+import 'models/link_change.dart';
 import 'dart:convert';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -22,6 +23,8 @@ abstract final class ToMain {
   static const String getOrganization = 'getOrganization';
   static const String undoGroupChange = 'undoGroupChange';
   static const String getConnection = 'getConnection';
+  static const String changeLink = 'changeLink';
+  static const String undoLinkChange = 'undoLinkChange';
   static const String linkStickies = 'linkStickies';
   static const String linkGroup = 'linkGroup';
   static const String createNoteGroup = 'createNoteGroup';
@@ -119,6 +122,23 @@ class MainChannel {
       _ch.invokeMethod(ToMain.focusSticky, id);
 
   Future<void> newSticky() => _ch.invokeMethod(ToMain.newSticky);
+
+  Future<LinkChange> changeLink(String a, String b, bool linked) async =>
+      LinkChange.decode(
+        await _ch.invokeMethod(
+          ToMain.changeLink,
+          jsonEncode({'a': a, 'b': b, 'linked': linked}),
+        ),
+      );
+
+  Future<void> undoLinkChange(String token) async {
+    try {
+      await _ch.invokeMethod(ToMain.undoLinkChange, token);
+    } on WindowChannelException catch (error) {
+      if (error.code == 'link_conflict') throw const LinkChangeConflict();
+      rethrow;
+    }
+  }
 
   Future<void> linkStickies(String a, String b) =>
       _ch.invokeMethod(ToMain.linkStickies, jsonEncode({'a': a, 'b': b}));

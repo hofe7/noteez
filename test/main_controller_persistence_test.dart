@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,10 +16,18 @@ void main() {
   late MainController controller;
   late ReminderScheduler reminders;
   late Sticky note;
+  Future<void> Function(Sticky)? deliver;
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     reminders = ReminderScheduler((_) {});
-    controller = MainController(database: db, reminders: reminders);
+    deliver = null;
+    controller = MainController(
+      database: db,
+      reminders: reminders,
+      deliverReminder: (note) async {
+        await deliver?.call(note);
+      },
+    );
     note = makeSticky(x: 0, y: 0, blocks: [textBlock('original')]);
     await db.upsert(note);
     controller.stickies.add(note);
@@ -116,6 +125,67 @@ void main() {
       expect((await db.allGroupMembers()).single.groupId, second.groupId);
       await call(ToMain.undoGroupChange, second.undoToken);
       expect((await db.allGroupMembers()).single.groupId, created.groupId);
+    },
+  );
+  test(
+    'delivery failure retains durable reservation, successful retry clears it',
+    () async {
+      final at = DateTime.now().millisecondsSinceEpoch - 1000;
+      await call(ToMain.setReminder, jsonEncode({'id': note.id, 'at': at}));
+      deliver = (_) async {
+        throw StateError('notification and window failed');
+      };
+      await expectLater(
+        controller.deliverDueReminder(note.id),
+        throwsStateError,
+      );
+      expect((await db.allActive()).single.remindAt, at);
+      deliver = (_) async {};
+      await controller.deliverDueReminder(note.id);
+      expect((await db.allActive()).single.remindAt, isNull);
+    },
+  );
+
+  test(
+    'in-flight delivery cannot clear a newer reservation, even at same timestamp',
+    () async {
+      final at = DateTime.now().millisecondsSinceEpoch - 1000;
+      await call(ToMain.setReminder, jsonEncode({'id': note.id, 'at': at}));
+      final gate = Completer<void>();
+      deliver = (_) => gate.future;
+      final firing = controller.deliverDueReminder(note.id);
+      await call(ToMain.setReminder, jsonEncode({'id': note.id, 'at': at}));
+      gate.complete();
+      await firing;
+      expect((await db.allActive()).single.remindAt, at);
+    },
+  );
+
+  test(
+    'failed acknowledgement preserves reservation after successful delivery',
+    () async {
+      final at = DateTime.now().millisecondsSinceEpoch - 1000;
+      await call(ToMain.setReminder, jsonEncode({'id': note.id, 'at': at}));
+      await failUpdates();
+      await expectLater(
+        controller.deliverDueReminder(note.id),
+        throwsA(anything),
+      );
+      expect((await db.allActive()).single.remindAt, at);
+    },
+  );
+  test(
+    'shutdown does not acknowledge an in-flight delivery against a closed database',
+    () async {
+      final at = DateTime.now().millisecondsSinceEpoch - 1000;
+      await call(ToMain.setReminder, jsonEncode({'id': note.id, 'at': at}));
+      final gate = Completer<void>();
+      deliver = (_) => gate.future;
+      final firing = controller.deliverDueReminder(note.id);
+      await controller.shutdown();
+      gate.complete();
+      await firing;
+      expect(controller.stickies.single.remindAt, at);
     },
   );
 }

@@ -1,3 +1,4 @@
+import 'services/markdown_import_service.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -157,7 +158,9 @@ class MenubarController with TrayListener {
       }
     } catch (e) {
       debugPrint('Markdown import failed: $e');
-      await _flashStatus('Markdown 가져오기 실패');
+      await _flashStatus(
+        e is MarkdownImportFailure ? e.toString() : 'Markdown 가져오기 실패',
+      );
     }
   }
 
@@ -178,7 +181,9 @@ class MenubarController with TrayListener {
       }
     } catch (e) {
       debugPrint('Markdown folder import failed: $e');
-      await _flashStatus('Markdown 폴더 가져오기 실패');
+      await _flashStatus(
+        e is MarkdownImportFailure ? e.toString() : 'Markdown 폴더 가져오기 실패',
+      );
     }
   }
 
@@ -197,7 +202,9 @@ class MenubarController with TrayListener {
       }
     } catch (e) {
       debugPrint('Notion ZIP import failed: $e');
-      await _flashStatus('Notion ZIP 가져오기 실패');
+      await _flashStatus(
+        e is MarkdownImportFailure ? e.toString() : 'Notion ZIP 가져오기 실패',
+      );
     }
   }
 
