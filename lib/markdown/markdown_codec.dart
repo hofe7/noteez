@@ -64,7 +64,10 @@ class NoteMarkdownCodec {
     final blocks = <Block>[];
     final references = <MarkdownReference>[];
     final frontMatter = <String, String>{};
-    var inFrontMatter = lines.isNotEmpty && lines.first.trim() == '---';
+    var inFrontMatter =
+        lines.isNotEmpty &&
+        lines.first.trim() == '---' &&
+        lines.skip(1).any((line) => line.trim() == '---');
     var inFence = false;
     var inConnections = false;
     var previousWasBlank = false;
@@ -229,10 +232,8 @@ class NoteMarkdownCodec {
       r'\[[^\]]+\]\((?:<([^>]+)>|([^)]+))\)',
     ).allMatches(line)) {
       if (match.start > 0 && line[match.start - 1] == '!') continue;
-      final target = (match.group(1) ?? match.group(2)!)
-          .trim()
-          .split(' ')
-          .first;
+      final target =
+          match.group(1)?.trim() ?? match.group(2)!.trim().split(' ').first;
       final uri = Uri.tryParse(target);
       if (target.startsWith('#') || (uri?.hasScheme ?? false)) continue;
       references.add(MarkdownReference(target, wikiLink: false));

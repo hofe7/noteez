@@ -2,6 +2,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:noteez/markdown/import_merge.dart';
 
 void main() {
+  test(
+    'changed source preserves an open editor even before its debounce saves',
+    () {
+      expect(
+        decideMarkdownImport(
+          hasOrigin: true,
+          hasSticky: true,
+          sourceUnchanged: false,
+          stickyUnchangedSinceImport: true,
+          isBeingEdited: true,
+        ),
+        MarkdownImportDecision.preserveBoth,
+      );
+    },
+  );
   test('new source creates a note', () {
     expect(
       decideMarkdownImport(

@@ -120,6 +120,17 @@ void main() {
     await groups.undo(move.undoToken);
     expect(await membership(), {ids[0]: 'a', ids[1]: 'a'});
   });
+  test('failed trash does not invalidate a committed undo receipt', () async {
+    final move = await groups.move('b', [ids[0]]);
+    await db.customStatement(
+      "CREATE TRIGGER fail_delete BEFORE DELETE ON group_members BEGIN SELECT RAISE(ABORT, 'delete failed'); END",
+    );
+    await expectLater(db.trashNote(ids[0]), throwsA(anything));
+    expect((await db.allActive()).any((n) => n.id == ids[0]), isTrue);
+    await db.customStatement('DROP TRIGGER fail_delete');
+    await groups.undo(move.undoToken);
+    expect((await membership())[ids[0]], 'a');
+  });
   test('overlapping commands capture distinct committed revisions', () async {
     final changes = await Future.wait([
       groups.move('b', [ids[0]]),

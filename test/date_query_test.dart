@@ -2,6 +2,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:noteez/date_query.dart';
 
 void main() {
+  test('oversized and zero date expressions fall back to keyword search', () {
+    final now = DateTime(2026, 9, 5);
+    expect(parseDateQuery('999999999999999999999999999일 전', now), isNull);
+    expect(parseDateQuery('최근 0일', now), isNull);
+    expect(parseDateQuery('최근 999999999999999999999999일', now), isNull);
+  });
   // 기준 시각: 2026-06-08 (월요일).
   final now = DateTime(2026, 6, 8, 15, 30);
   DateTime d(int y, int m, int day) => DateTime(y, m, day);

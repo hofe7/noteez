@@ -6,6 +6,7 @@ import 'package:drift/native.dart';
 import 'package:noteez/db/database.dart';
 import 'package:noteez/backup/backup_service.dart';
 import 'package:path/path.dart' as p;
+import 'package:noteez/models/sticky.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 void main() {
@@ -75,7 +76,7 @@ void main() {
     final originalImage = File(p.join(root.path, 'outside', 'photo.png'));
     await originalImage.parent.create(recursive: true);
     await originalImage.writeAsBytes([1, 2, 3, 4]);
-    _createDatabase(
+    await _createDatabase(
       p.join(documents.path, 'noteez.sqlite'),
       id: 'original',
       blocks: [
@@ -90,7 +91,7 @@ void main() {
     expect(backup?.imageCount, 1);
 
     File(p.join(documents.path, 'noteez.sqlite')).deleteSync();
-    _createDatabase(
+    await _createDatabase(
       p.join(documents.path, 'noteez.sqlite'),
       id: 'replacement',
       blocks: [
@@ -129,7 +130,7 @@ void main() {
   });
 
   test('keeps only the configured number of automatic backups', () async {
-    _createDatabase(
+    await _createDatabase(
       p.join(documents.path, 'noteez.sqlite'),
       id: 'note',
       blocks: [
@@ -159,6 +160,29 @@ void main() {
     expect(history.first.imageCount, 0);
   });
 
+  test('rejects a SQLite file with an incomplete app schema', () async {
+    final file = File(p.join(documents.path, 'noteez.sqlite'));
+    final invalid = sqlite3.open(file.path);
+    invalid.execute('CREATE TABLE stickies (id TEXT, blocks_json TEXT)');
+    invalid.execute('PRAGMA user_version = 12');
+    invalid.close();
+    final zip = p.join(root.path, 'incomplete.zip');
+    await service.createBackup(zip);
+    await file.delete();
+    await _createDatabase(
+      file.path,
+      id: 'keep',
+      blocks: [
+        {'type': 'text', 'id': 'body', 'text': 'keep this note'},
+      ],
+    );
+    await expectLater(service.stageRestore(zip), throwsFormatException);
+    expect(await service.applyPendingRestore(), isFalse);
+    final live = AppDatabase.forTesting(NativeDatabase(file));
+    expect((await live.allActive()).single.id, 'keep');
+    await live.close();
+  });
+
   test('rejects an arbitrary zip before staging a restore', () async {
     final invalid = File(p.join(root.path, 'invalid.zip'));
     await invalid.writeAsBytes([0, 1, 2, 3]);
@@ -173,25 +197,25 @@ void main() {
   });
 }
 
-void _createDatabase(
+Future<void> _createDatabase(
   String path, {
   required String id,
   required List<Map<String, dynamic>> blocks,
-}) {
-  final database = sqlite3.open(path);
+}) async {
+  final database = AppDatabase.forTesting(NativeDatabase(File(path)));
   try {
-    database.execute('''
-      CREATE TABLE stickies (
-        id TEXT PRIMARY KEY NOT NULL,
-        blocks_json TEXT NOT NULL
-      )
-    ''');
-    database.execute('INSERT INTO stickies (id, blocks_json) VALUES (?, ?)', [
-      id,
-      jsonEncode(blocks),
-    ]);
-    database.execute('PRAGMA user_version = 11');
+    await database.upsert(
+      Sticky(
+        id: id,
+        blocks: blocks.map(Block.fromJson).toList(),
+        colorIndex: 0,
+        x: 0,
+        y: 0,
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+      ),
+    );
   } finally {
-    database.close();
+    await database.close();
   }
 }

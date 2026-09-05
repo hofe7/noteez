@@ -7,8 +7,11 @@ import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
+import 'package:drift/native.dart';
 
-import '../db/database.dart' show databaseSchemaVersion;
+import '../db/database.dart' show AppDatabase, databaseSchemaVersion;
+import '../models/sticky.dart';
+import '../safe_zip.dart';
 
 const _backupFormat = 'noteez-backup';
 const _backupFormatVersion = 1;
@@ -74,6 +77,7 @@ class BackupService {
     Future<Directory> Function()? supportDirectory,
     DateTime Function()? now,
     this.maxAutomaticBackups = 10,
+    this.beforeSnapshot,
   }) : _documentsDirectory =
            documentsDirectory ?? getApplicationDocumentsDirectory,
        _supportDirectory = supportDirectory ?? getApplicationSupportDirectory,
@@ -83,6 +87,7 @@ class BackupService {
   final Future<Directory> Function() _supportDirectory;
   final DateTime Function() _now;
   final int maxAutomaticBackups;
+  final Future<void> Function()? beforeSnapshot;
 
   Future<String> automaticBackupDirectoryPath() async {
     final support = await _supportDirectory();
@@ -139,6 +144,7 @@ class BackupService {
   }
 
   Future<BackupResult?> createBackup(String destinationPath) async {
+    await beforeSnapshot?.call();
     final documents = await _documentsDirectory();
     final sourceFile = File(p.join(documents.path, 'noteez.sqlite'));
     if (!await sourceFile.exists()) return null;
@@ -175,7 +181,6 @@ class BackupService {
         filename: partial.path,
         followLinks: false,
       );
-      if (await destination.exists()) await destination.delete();
       await partial.rename(destination.path);
       return BackupResult(
         path: destination.path,
@@ -208,7 +213,7 @@ class BackupService {
       await createAutomaticBackup();
       final contents = Directory(p.join(extracted.path, 'contents'));
       await contents.create();
-      await _extractZipSafely(selectedCopy.path, contents.path);
+      await extractZipSafely(selectedCopy.path, contents.path);
       final snapshotSource = File(
         p.join(contents.path, 'database', 'noteez.sqlite'),
       );
@@ -226,7 +231,7 @@ class BackupService {
       if (schema is! int || schema > _databaseSchemaVersion) {
         throw const FormatException('더 최신 버전의 Noteez에서 만든 백업입니다.');
       }
-      _validateDatabase(snapshotSource.path);
+      await _validateDatabase(snapshotSource.path);
 
       final pendingNew = await backupRoot.createTemp('pending-');
       var keepPending = false;
@@ -268,7 +273,7 @@ class BackupService {
     final ready = File(p.join(pending.path, 'ready.json'));
     final stagedDatabase = File(p.join(pending.path, 'noteez.sqlite'));
     if (!await ready.exists() || !await stagedDatabase.exists()) return false;
-    _validateDatabase(stagedDatabase.path);
+    await _validateDatabase(stagedDatabase.path);
 
     final stagedAssets = Directory(p.join(pending.path, 'assets'));
     final targetAssets = Directory(p.join(support.path, 'imports', 'assets'));
@@ -293,27 +298,28 @@ class BackupService {
     if (await previous.exists()) await previous.delete();
     await stagedDatabase.copy(replacement.path);
 
-    var movedLive = false;
-    try {
-      if (await live.exists()) {
-        await live.rename(previous.path);
-        movedLive = true;
+    // Keep a consistent recovery snapshot, including uncheckpointed WAL data.
+    // macOS rename replaces the live file atomically: there is no missing-DB
+    // interval in which a restart could initialize an empty library.
+    if (await live.exists()) {
+      await _snapshotDatabase(live.path, previous.path);
+      final database = sqlite3.open(live.path);
+      try {
+        final checkpoint = database.select('PRAGMA wal_checkpoint(TRUNCATE)');
+        if (checkpoint.single.values.first != 0) {
+          throw StateError('데이터베이스가 사용 중이어서 복원할 수 없습니다.');
+        }
+      } finally {
+        database.close();
       }
-      for (final suffix in const ['-wal', '-shm']) {
-        final sidecar = File('${live.path}$suffix');
-        if (await sidecar.exists()) await sidecar.delete();
-      }
-      await replacement.rename(live.path);
-      if (await previous.exists()) await previous.delete();
-      await pending.delete(recursive: true);
-      return true;
-    } catch (_) {
-      if (await replacement.exists()) await replacement.delete();
-      if (movedLive && !await live.exists() && await previous.exists()) {
-        await previous.rename(live.path);
-      }
-      rethrow;
     }
+    // Consume the request before swapping. If interrupted here the old library
+    // remains usable; the user can select the backup again. Never replay an
+    // already applied restore after a cleanup failure.
+    await ready.rename(p.join(pending.path, 'applying.json'));
+    await replacement.rename(live.path);
+    await pending.delete(recursive: true);
+    return true;
   }
 
   Future<({int noteCount, int imageCount})> _makeSnapshotPortable(
@@ -502,27 +508,40 @@ Future<void> _snapshotDatabase(
   }
 }
 
-void _validateDatabase(String path) {
-  final database = sqlite3.open(path, mode: OpenMode.readOnly);
+Future<void> _validateDatabase(String path) async {
+  final source = sqlite3.open(path, mode: OpenMode.readOnly);
+  final copy = sqlite3.openInMemory();
   try {
-    final result = database.select('PRAGMA quick_check').single.values.first;
-    if (result != 'ok') {
-      throw const FormatException('백업 데이터베이스가 손상되었습니다.');
+    final result = source.select('PRAGMA quick_check').single.values.first;
+    final version =
+        source.select('PRAGMA user_version').single.values.first as int;
+    if (result != 'ok' || version < 1 || version > _databaseSchemaVersion) {
+      throw const FormatException('손상되었거나 지원하지 않는 백업 데이터베이스입니다.');
     }
-    final tables = database
-        .select("SELECT name FROM sqlite_master WHERE type = 'table'")
-        .map((row) => row['name'])
-        .toSet();
-    if (!tables.contains('stickies')) {
-      throw const FormatException('Noteez 데이터베이스가 아닙니다.');
-    }
-    final schemaVersion =
-        database.select('PRAGMA user_version').single.values.first as int;
-    if (schemaVersion > _databaseSchemaVersion) {
-      throw const FormatException('더 최신 버전의 Noteez 데이터베이스입니다.');
-    }
+    await source.backup(copy).drain<void>();
+  } catch (_) {
+    copy.close();
+    rethrow;
   } finally {
-    database.close();
+    source.close();
+  }
+  // Exercise the real migration and every table on a disposable copy. A file
+  // with only a table named "stickies" is not a usable Noteez backup.
+  final validation = AppDatabase.forTesting(NativeDatabase.opened(copy));
+  try {
+    for (final table in validation.allTables) {
+      await validation.select(table).get();
+    }
+    await validation.allActive();
+    for (final row in await validation.allTrashed()) {
+      for (final block in jsonDecode(row.blocksJson) as List) {
+        Block.fromJson(block as Map<String, dynamic>);
+      }
+    }
+  } catch (_) {
+    throw const FormatException('백업의 테이블 또는 메모 형식이 올바르지 않습니다.');
+  } finally {
+    await validation.close();
   }
 }
 
@@ -538,33 +557,6 @@ int _noteCount(String path) {
 int _noteCountFromDatabase(Database database) =>
     database.select('SELECT COUNT(*) AS count FROM stickies').single['count']
         as int;
-
-Future<void> _extractZipSafely(String zipPath, String outputPath) async {
-  final input = InputFileStream(zipPath);
-  try {
-    final archive = ZipDecoder().decodeStream(input, verify: true);
-    var totalBytes = 0;
-    for (final entry in archive) {
-      final name = entry.name.replaceAll('\\', '/');
-      final normalized = p.posix.normalize(name);
-      if (p.posix.isAbsolute(normalized) ||
-          normalized == '..' ||
-          normalized.startsWith('../')) {
-        throw const FormatException('안전하지 않은 ZIP 경로입니다.');
-      }
-      if (entry.isSymbolicLink) {
-        throw const FormatException('심볼릭 링크가 포함된 ZIP은 복원할 수 없습니다.');
-      }
-      if (entry.isFile) totalBytes += entry.size;
-    }
-    if (archive.length > 20000 || totalBytes > 2 * 1024 * 1024 * 1024) {
-      throw const FormatException('백업 ZIP이 너무 큽니다.');
-    }
-    await extractArchiveToDisk(archive, outputPath);
-  } finally {
-    await input.close();
-  }
-}
 
 String _backupName(DateTime dateTime) {
   String two(int value) => value.toString().padLeft(2, '0');

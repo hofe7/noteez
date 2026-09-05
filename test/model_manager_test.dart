@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -93,6 +94,47 @@ void main() {
     await reloaded.remove(model.id);
     expect(reloaded.selectedId, isNull);
     expect(reloaded.isInstalled(model.id), isFalse);
+  });
+
+  test('oversized stream is rejected before the server finishes', () async {
+    await server.close(force: true);
+    final release = Completer<void>();
+    server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((request) async {
+      try {
+        request.response.bufferOutput = false;
+        request.response.add(List.filled(512, 1));
+        await request.response.flush();
+        await release.future;
+        await request.response.close();
+      } catch (_) {
+        /* Client rejects the oversized stream. */
+      }
+    });
+    final subject = manager(profile());
+    await subject.initialize();
+    try {
+      await expectLater(
+        subject
+            .downloadAndSelect('test-model')
+            .timeout(const Duration(seconds: 2)),
+        throwsStateError,
+      );
+      expect(subject.isInstalled('test-model'), isFalse);
+    } finally {
+      release.complete();
+    }
+  });
+
+  test('overlapping downloads cannot share mutable download state', () async {
+    final subject = manager(profile());
+    await subject.initialize();
+    final first = subject.downloadAndSelect('test-model');
+    await expectLater(
+      subject.downloadAndSelect('test-model'),
+      throwsStateError,
+    );
+    expect(await first, isTrue);
   });
 
   test('does not install an artifact with the wrong hash', () async {

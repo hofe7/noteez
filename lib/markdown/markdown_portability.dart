@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 
-import 'package:archive/archive_io.dart';
+import 'package:crypto/crypto.dart';
+import '../safe_zip.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -16,23 +17,6 @@ const _markdownTypes = <XTypeGroup>[
 const _zipTypes = <XTypeGroup>[
   XTypeGroup(label: 'Notion ZIP', extensions: ['zip']),
 ];
-
-Future<void> _extractZipSafely(String zipPath, String outputPath) async {
-  final input = InputFileStream(zipPath);
-  try {
-    final archive = ZipDecoder().decodeStream(input, verify: true);
-    var totalBytes = 0;
-    for (final entry in archive) {
-      if (entry.isFile) totalBytes += entry.size;
-    }
-    if (archive.length > 20000 || totalBytes > 2 * 1024 * 1024 * 1024) {
-      throw const FormatException('ZIP is too large to import safely');
-    }
-    await extractArchiveToDisk(archive, outputPath);
-  } finally {
-    await input.close();
-  }
-}
 
 class ImportedMarkdownNote {
   const ImportedMarkdownNote({
@@ -138,7 +122,7 @@ class MarkdownPortability {
     final temporaryPath = temporary.path;
     try {
       // 큰 Notion export의 압축 해제가 UI isolate를 막지 않도록 별도 isolate에서.
-      await Isolate.run(() => _extractZipSafely(zipPath, temporaryPath));
+      await Isolate.run(() => extractZipSafely(zipPath, temporaryPath));
       return await importFolderPath(
         temporaryPath,
         sourceNamespace: 'zip:${_normalizedPath(zipPath)}',
@@ -188,6 +172,11 @@ class MarkdownPortability {
             if (source == null) return null;
             final sourceFile = File(source);
             if (!await sourceFile.exists()) return null;
+            if (sourceRoot != null) {
+              final root = await Directory(sourceRoot).resolveSymbolicLinks();
+              final resolved = await sourceFile.resolveSymbolicLinks();
+              if (!p.isWithin(root, resolved)) return null;
+            }
             final cached = copiedImages[source];
             if (cached != null) return cached;
 
@@ -456,16 +445,7 @@ class MarkdownPortability {
   }
 
   Future<String> _stableFileHash(File file) async {
-    var hash = 0x811c9dc5;
-    var length = 0;
-    await for (final chunk in file.openRead()) {
-      length += chunk.length;
-      for (final byte in chunk) {
-        hash ^= byte;
-        hash = (hash * 0x01000193) & 0xffffffff;
-      }
-    }
-    return '$length-${hash.toRadixString(16).padLeft(8, '0')}';
+    return (await sha256.bind(file.openRead()).first).toString();
   }
 
   Future<Directory> _uniqueDirectory(Directory parent, String name) async {

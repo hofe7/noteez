@@ -5,6 +5,15 @@ import 'package:noteez/models/sticky.dart';
 void main() {
   const codec = NoteMarkdownCodec();
 
+  test('unclosed front matter never discards the body', () async {
+    final decoded = await codec.decode('---\n회의록\n지시사항');
+    expect(decoded.map((b) => b.text), containsAll(['회의록', '지시사항']));
+  });
+  test('angle-bracket links preserve spaces in paths', () async {
+    final decoded = await codec.decodeDocument('[회의](<notes/Team Meeting.md>)');
+    expect(decoded.references.single.target, 'notes/Team Meeting.md');
+  });
+
   test('decodes common Markdown into Noteez blocks', () async {
     final blocks = await codec.decode(
       '''---

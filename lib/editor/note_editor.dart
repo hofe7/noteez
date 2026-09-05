@@ -2,6 +2,7 @@
 // 안정 동작이라 의도적으로 사용한다.
 // ignore_for_file: experimental_member_use
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -108,6 +109,7 @@ class NoteEditorState extends State<NoteEditor> {
     final identified = NoteDelta.reconcileIdentities(blocks, _prev);
     final merged = NoteDelta.mergeMetadata(identified, _prev);
     _stampMetadata(merged);
+    if (jsonEncode(merged) == jsonEncode(_prev)) return;
     _prev = merged;
     widget.onChanged(merged);
   }

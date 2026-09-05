@@ -9,7 +9,7 @@ import 'models/group_change.dart';
 /// unidirectional: 메인 엔진만 핸들러 등록, 모든 창이 invoke.
 const String kMainChannel = 'noteez/main';
 
-/// 창 → 메인 메서드명. 송신측(창)과 수신측(MainController._onCall)이 **같은 상수**를
+/// 창 → 메인 메서드명. 송신측(창)과 수신측(MainController.handleWindowCall)이 **같은 상수**를
 /// 공유 → 매직스트링 오타/드리프트를 컴파일러가 잡는다.
 abstract final class ToMain {
   static const String updateSticky = 'updateSticky';

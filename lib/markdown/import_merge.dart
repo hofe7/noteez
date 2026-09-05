@@ -6,9 +6,11 @@ MarkdownImportDecision decideMarkdownImport({
   required bool hasSticky,
   required bool sourceUnchanged,
   required bool stickyUnchangedSinceImport,
+  bool isBeingEdited = false,
 }) {
   if (!hasOrigin || !hasSticky) return MarkdownImportDecision.create;
   if (sourceUnchanged) return MarkdownImportDecision.skip;
+  if (isBeingEdited) return MarkdownImportDecision.preserveBoth;
   if (stickyUnchangedSinceImport) return MarkdownImportDecision.update;
   return MarkdownImportDecision.preserveBoth;
 }

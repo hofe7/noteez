@@ -148,18 +148,18 @@ class ModelManager extends ChangeNotifier {
     final staging = Directory(
       '${root.path}/.partial-${profile.id}-${DateTime.now().microsecondsSinceEpoch}',
     );
-    await staging.create(recursive: true);
     _activeId = id;
     _activity = ModelActivity.downloading;
     _progress = 0;
     _error = null;
     _cancelRequested = false;
     _lastProgressNotification = -1;
-    _activeClient = _httpClientFactory();
-    _activeClient!.connectionTimeout = const Duration(seconds: 30);
     notifyListeners();
 
     try {
+      _activeClient = _httpClientFactory();
+      _activeClient!.connectionTimeout = const Duration(seconds: 30);
+      await staging.create(recursive: true);
       var completedBytes = 0;
       for (final artifact in profile.artifacts) {
         await _downloadArtifact(profile, artifact, staging, completedBytes);
@@ -258,12 +258,14 @@ class ModelManager extends ChangeNotifier {
   ) async {
     final client = _activeClient!;
     final uri = _downloadUriResolver(profile, artifact);
-    final request = await client.getUrl(uri);
+    final request = await client
+        .getUrl(uri)
+        .timeout(const Duration(seconds: 30));
     request.headers.set(
       HttpHeaders.userAgentHeader,
       'Noteez/1.0 model-manager',
     );
-    final response = await request.close();
+    final response = await request.close().timeout(const Duration(seconds: 30));
     if (response.statusCode != HttpStatus.ok) {
       throw HttpException(
         'Hugging Face가 HTTP ${response.statusCode}을 반환했습니다.',
@@ -275,10 +277,14 @@ class ModelManager extends ChangeNotifier {
     final sink = file.openWrite();
     var received = 0;
     try {
-      await for (final chunk in response) {
+      await for (final chunk in response.timeout(const Duration(seconds: 30))) {
         if (_cancelRequested) throw const _DownloadCancelled();
-        sink.add(chunk);
         received += chunk.length;
+        if (received > artifact.bytes) {
+          client.close(force: true);
+          throw StateError('${artifact.localName} 크기가 예상보다 큽니다.');
+        }
+        sink.add(chunk);
         _setProgress((completedBytes + received) / profile.downloadBytes);
       }
       await sink.flush();
@@ -401,7 +407,6 @@ class ModelManager extends ChangeNotifier {
       ]),
       flush: true,
     );
-    if (await target.exists()) await target.delete();
     await temporary.rename(target.path);
   }
 

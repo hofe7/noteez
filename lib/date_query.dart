@@ -24,10 +24,13 @@ DateRange? parseDateQuery(String query, DateTime now) {
   final recent = RegExp(r'^최근\s*(\d+)?\s*(일|주|일주일|주일)$').firstMatch(q);
   if (recent != null) {
     final unit = recent.group(2)!;
-    var n = int.tryParse(recent.group(1) ?? '') ?? 1;
+    var n = recent.group(1) == null ? 1 : int.tryParse(recent.group(1)!);
+    if (n == null || n < 1 || n > 365000) return null;
     if (unit.contains('주')) n *= 7;
     return DateRange(
-        today.subtract(Duration(days: n - 1)), today.add(const Duration(days: 1)));
+      today.subtract(Duration(days: n - 1)),
+      today.add(const Duration(days: 1)),
+    );
   }
 
   // 범위: "A ~ B" / "A - B" / "A 부터 B 까지"
@@ -99,7 +102,7 @@ DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
     case '이번달':
       return (
         start: DateTime(now.year, now.month, 1),
-        end: DateTime(now.year, now.month + 1, 1)
+        end: DateTime(now.year, now.month + 1, 1),
       );
     case '지난 달':
     case '지난달':
@@ -107,14 +110,16 @@ DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
     case '저번달':
       return (
         start: DateTime(now.year, now.month - 1, 1),
-        end: DateTime(now.year, now.month, 1)
+        end: DateTime(now.year, now.month, 1),
       );
   }
 
   // "N일 전"
   final ago = RegExp(r'^(\d+)\s*일\s*전$').firstMatch(q);
   if (ago != null) {
-    return oneDay(today.subtract(Duration(days: int.parse(ago.group(1)!))));
+    final days = int.tryParse(ago.group(1)!);
+    if (days == null || days > 365000) return null;
+    return oneDay(today.subtract(Duration(days: days)));
   }
 
   // "N월" (그 달 전체)
@@ -131,24 +136,39 @@ DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
   // "M월 D일"
   final md = RegExp(r'^(\d{1,2})\s*월\s*(\d{1,2})\s*일?$').firstMatch(q);
   if (md != null) {
-    return _ymd(now.year, int.parse(md.group(1)!), int.parse(md.group(2)!),
-        today, oneDay,
-        rollBack: true);
+    return _ymd(
+      now.year,
+      int.parse(md.group(1)!),
+      int.parse(md.group(2)!),
+      today,
+      oneDay,
+      rollBack: true,
+    );
   }
 
   // "YYYY-MM-DD" / "YYYY.MM.DD" / "YYYY/MM/DD"
   final iso = RegExp(r'^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$').firstMatch(q);
   if (iso != null) {
-    return _ymd(int.parse(iso.group(1)!), int.parse(iso.group(2)!),
-        int.parse(iso.group(3)!), today, oneDay);
+    return _ymd(
+      int.parse(iso.group(1)!),
+      int.parse(iso.group(2)!),
+      int.parse(iso.group(3)!),
+      today,
+      oneDay,
+    );
   }
 
   // "M/D" / "M.D" (연도 생략 → 올해, 미래면 작년)
   final slash = RegExp(r'^(\d{1,2})[/.](\d{1,2})$').firstMatch(q);
   if (slash != null) {
-    return _ymd(now.year, int.parse(slash.group(1)!), int.parse(slash.group(2)!),
-        today, oneDay,
-        rollBack: true);
+    return _ymd(
+      now.year,
+      int.parse(slash.group(1)!),
+      int.parse(slash.group(2)!),
+      today,
+      oneDay,
+      rollBack: true,
+    );
   }
 
   return null;

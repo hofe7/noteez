@@ -169,7 +169,9 @@ class AppDatabase extends _$AppDatabase {
       if (from < 6) await m.addColumn(stickies, stickies.remindAt);
       if (from < 7) await m.createTable(suggestionDismissals);
       if (from < 8) await m.createTable(importOrigins);
-      if (from < 9) await m.addColumn(embeddings, embeddings.modelId);
+      if (from >= 4 && from < 9) {
+        await m.addColumn(embeddings, embeddings.modelId);
+      }
       if (from < 10) {
         await m.createTable(noteGroups);
         await m.createTable(groupMembers);
@@ -353,7 +355,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> removeNotesFromGroup(Iterable<String> ids) =>
-      transaction(() async {
+      groupTransaction(() async {
         final uniqueIds = ids.toSet().toList();
         if (uniqueIds.isEmpty) return;
         _touchMemberships(uniqueIds);
@@ -552,7 +554,7 @@ class AppDatabase extends _$AppDatabase {
           .get();
 
   /// Delete-related changes commit together, before the UI drops the note.
-  Future<void> trashNote(String id) => transaction(() async {
+  Future<void> trashNote(String id) => groupTransaction(() async {
     await softDelete(id);
     await deleteEmbedding(id);
     await softDeleteLinksFor(id);
@@ -579,21 +581,22 @@ class AppDatabase extends _$AppDatabase {
   });
 
   /// Active notes cannot be permanently removed through the trash API.
-  Future<void> permanentlyDeleteTrashed(String id) => transaction(() async {
-    final row =
-        await (select(stickies)
-              ..where((t) => t.id.equals(id) & t.deletedAt.isNotNull()))
-            .getSingleOrNull();
-    if (row == null) return;
-    await trashNote(id);
-    await (delete(
-      groupSuggestionDismissals,
-    )..where((t) => t.stickyId.equals(id))).go();
-    await (delete(
-      links,
-    )..where((t) => t.aId.equals(id) | t.bId.equals(id))).go();
-    await (delete(stickies)..where((t) => t.id.equals(id))).go();
-  });
+  Future<void> permanentlyDeleteTrashed(String id) =>
+      groupTransaction(() async {
+        final row =
+            await (select(stickies)
+                  ..where((t) => t.id.equals(id) & t.deletedAt.isNotNull()))
+                .getSingleOrNull();
+        if (row == null) return;
+        await trashNote(id);
+        await (delete(
+          groupSuggestionDismissals,
+        )..where((t) => t.stickyId.equals(id))).go();
+        await (delete(
+          links,
+        )..where((t) => t.aId.equals(id) | t.bId.equals(id))).go();
+        await (delete(stickies)..where((t) => t.id.equals(id))).go();
+      });
 
   static Sticky _toModel(StickyRow r) => Sticky(
     id: r.id,

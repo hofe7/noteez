@@ -9,6 +9,7 @@ import '../file_dialog_host.dart';
 import '../date_util.dart';
 import '../main_controller.dart';
 import '../models/sticky.dart';
+import '../models/saved_note_open_failure.dart';
 import '../sticky_palette.dart';
 import 'search_palette_widgets.dart';
 
@@ -27,13 +28,19 @@ class SearchPaletteApp extends StatelessWidget {
 }
 
 class SearchPalette extends StatefulWidget {
-  const SearchPalette({super.key});
+  const SearchPalette({super.key, this.controller});
+  final MainController? controller;
 
   @override
   State<SearchPalette> createState() => _SearchPaletteState();
 }
 
 class _SearchPaletteState extends State<SearchPalette> with WindowListener {
+  MainController get _controller => widget.controller ?? mainController;
+  int _searchGeneration = 0;
+  bool _saving = false;
+  String? _error;
+
   final TextEditingController _q = TextEditingController();
   late final FocusNode _focus = FocusNode(onKeyEvent: _onFieldKey);
   String _query = '';
@@ -117,9 +124,36 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   }
 
   Future<void> _createFromQuery() async {
-    final t = _query.trim();
-    await _hide();
-    if (t.isNotEmpty) await mainController.addStickyWithText(t);
+    await _saveCapture(_query);
+  }
+
+  Future<void> _saveCapture(String text) async {
+    if (_saving || text.trim().isEmpty) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await _controller.addStickyWithText(text);
+      if (!mounted) return;
+      _q.clear();
+      _query = '';
+      await _hide();
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          if (error is SavedNoteOpenFailure) {
+            _q.clear();
+            _query = '';
+            _error = '메모는 저장했어요. 창을 열지 못해 검색에서 다시 열어 주세요.';
+          } else {
+            _error = '저장하지 못했어요. 입력은 그대로예요. 다시 시도해 주세요.';
+          }
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   void _ensureVisible() {
@@ -146,9 +180,9 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   void initState() {
     super.initState();
     windowManager.addListener(this);
-    mainController.searchTick.addListener(_onOpen);
-    mainController.captureTick.addListener(_onCapture);
-    mainController.modelTick.addListener(_onModelState);
+    _controller.searchTick.addListener(_onOpen);
+    _controller.captureTick.addListener(_onCapture);
+    _controller.modelTick.addListener(_onModelState);
   }
 
   void _onModelState() {
@@ -157,6 +191,10 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
 
   // ⌘⇧K: 검색 모드로 열기.
   void _onOpen() {
+    if (_saving) return;
+    _searchGeneration++;
+    if (_error != null && _q.text.isNotEmpty) return;
+    _error = null;
     _q.clear();
     _query = '';
     _panelId = null;
@@ -182,6 +220,11 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
 
   // ⌘⇧Space: 빠른 캡처 모드로 열기.
   void _onCapture() {
+    if (_saving) return;
+    _searchGeneration++;
+    _debounce?.cancel();
+    if (_error != null && _q.text.isNotEmpty) return;
+    _error = null;
     _q.clear();
     _query = '';
     setState(() => _capture = true);
@@ -189,21 +232,23 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   }
 
   Future<void> _commit() async {
-    final t = _q.text;
-    await _hide(); // 피드백 없이 바로 닫고 저장
-    if (t.trim().isNotEmpty) await mainController.addStickyWithText(t);
+    await _saveCapture(_q.text);
   }
 
   void _onChanged(String v) {
     _query = v;
+    _searchGeneration++;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 140), _runSearch);
   }
 
   // 의미검색은 메인 엔진의 ConnectionEngine 직접 사용(같은 isolate, IPC 불필요).
   Future<void> _runSearch() async {
-    final r = await mainController.search(_query);
-    if (!mounted) return;
+    if (_capture) return;
+    final generation = ++_searchGeneration;
+    final query = _query;
+    final r = await _controller.search(query);
+    if (!mounted || _capture || generation != _searchGeneration) return;
     setState(() {
       _results = [...r.exact, ...r.related];
       _exactCount = r.exact.length;
@@ -216,7 +261,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   void onWindowBlur() {
     // A native file panel takes focus from its parent. Hiding the parent here
     // also hides the sheet and makes the tray action appear to do nothing.
-    if (!fileDialogHost.active) _hide();
+    if (!fileDialogHost.active && !_saving && _error == null) _hide();
   }
 
   Future<void> _hide() async {
@@ -225,15 +270,15 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
 
   Future<void> _open(Sticky s) async {
     await _hide();
-    await mainController.showOne(s.id);
+    await _controller.showOne(s.id);
   }
 
   @override
   void dispose() {
     windowManager.removeListener(this);
-    mainController.searchTick.removeListener(_onOpen);
-    mainController.captureTick.removeListener(_onCapture);
-    mainController.modelTick.removeListener(_onModelState);
+    _controller.searchTick.removeListener(_onOpen);
+    _controller.captureTick.removeListener(_onCapture);
+    _controller.modelTick.removeListener(_onModelState);
     _debounce?.cancel();
     _q.dispose();
     _focus.dispose();
@@ -299,6 +344,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
                     Expanded(
                       child: TextField(
                         controller: _q,
+                        readOnly: _saving,
                         focusNode: _focus,
                         autofocus: true,
                         maxLines: _capture ? 3 : 1,
@@ -333,6 +379,14 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
                   ],
                 ),
               ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                ),
               if (_capture) ...[
                 const Spacer(), // 힌트를 종이 바닥에 고정(스티커 푸터처럼)
                 Container(
@@ -381,8 +435,8 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
                 if (!_split && !_browsing && _relatedItems().isNotEmpty)
                   _relatedInline(),
                 if (!_browsing &&
-                    (!mainController.hasSelectedModel ||
-                        mainController.modelIndexing))
+                    (!_controller.hasSelectedModel ||
+                        _controller.modelIndexing))
                   _modelStatus(),
                 _footerHint(),
               ],
@@ -554,7 +608,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
 
   Future<void> _openId(String id) async {
     await _hide();
-    await mainController.showOne(id);
+    await _controller.showOne(id);
   }
 
   // 관련 패널 대상 = hover/선택 중인 메모. 없으면 선택된 결과.
@@ -563,7 +617,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   // 대상 메모와 '같은 묶음'인 메모들.
   List<Map<String, dynamic>> _relatedItems() {
     final id = _panelTargetId;
-    return id == null ? const [] : mainController.sameGroup(id);
+    return id == null ? const [] : _controller.sameGroup(id);
   }
 
   // 분할 모드: 우측 패널에 hover/선택 메모의 같은-묶음 메모.
@@ -643,7 +697,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
 
   // 패널 상단: 지금 보고 있는(hover/선택) 메모.
   Widget _panelCurrent(String id) {
-    final brief = mainController.noteBrief(id);
+    final brief = _controller.noteBrief(id);
     if (brief == null) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -720,7 +774,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
   }
 
   Widget _modelStatus() {
-    final ready = mainController.hasSelectedModel;
+    final ready = _controller.hasSelectedModel;
     return Container(
       margin: const EdgeInsets.fromLTRB(14, 4, 14, 2),
       padding: const EdgeInsets.fromLTRB(12, 7, 8, 7),
@@ -739,7 +793,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
           Expanded(
             child: Text(
               ready
-                  ? 'AI가 메모를 읽는 중 · ${mainController.indexedNotes}/${mainController.indexTotal}'
+                  ? 'AI가 메모를 읽는 중 · ${_controller.indexedNotes}/${_controller.indexTotal}'
                   : '정확 검색만 사용 중 · AI 관련 검색 모델이 없습니다',
               style: const TextStyle(fontSize: 11.5, color: Colors.black54),
             ),
@@ -748,7 +802,7 @@ class _SearchPaletteState extends State<SearchPalette> with WindowListener {
             TextButton(
               onPressed: () async {
                 await _hide();
-                await mainController.openModels();
+                await _controller.openModels();
               },
               style: TextButton.styleFrom(
                 visualDensity: VisualDensity.compact,

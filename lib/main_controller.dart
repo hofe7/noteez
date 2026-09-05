@@ -1,6 +1,7 @@
 import 'services/note_save_service.dart';
 import 'services/group_service.dart';
 import 'models/group_change.dart';
+import 'models/saved_note_open_failure.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -31,7 +32,10 @@ const _uuid = Uuid();
 
 /// 메인 프로세스 = 권위자. 상태 + Drift(SQLite) 영속화 소유, 스티커 창 생성/추적.
 class MainController extends ChangeNotifier {
-  MainController({AppDatabase? database}) : _db = database ?? AppDatabase();
+  MainController({AppDatabase? database, ReminderScheduler? reminders})
+    : _db = database ?? AppDatabase(),
+      _injectedReminders = reminders;
+  final ReminderScheduler? _injectedReminders;
 
   final AppDatabase _db;
   late final GroupService _groups = GroupService(_db);
@@ -47,12 +51,15 @@ class MainController extends ChangeNotifier {
       _pushOverview();
     },
   );
-  final BackupService _backups = BackupService();
+  late final BackupService _backups = BackupService(
+    beforeSnapshot: flushPendingWrites,
+  );
   final ConnectionEngine _conn = ConnectionEngine();
   final ModelManager _models = ModelManager();
   final HuggingFaceModelSearch _modelSearch = HuggingFaceModelSearch();
   final List<Sticky> stickies = [];
   final Map<String, WindowController> _windows = {};
+  final Map<String, Future<void>> _spawning = {};
   WindowController? _overviewWin; // 전체 보기 창(열려 있으면 변경을 push)
   WindowController? _modelWin;
   WindowController? _backupWin;
@@ -76,7 +83,8 @@ class MainController extends ChangeNotifier {
   _dismissals = {};
 
   /// 리마인더 타이머. 발화 시 알림(best-effort) 또는 자동 소환.
-  late final ReminderScheduler _reminders = ReminderScheduler(_fireReminder);
+  late final ReminderScheduler _reminders =
+      _injectedReminders ?? ReminderScheduler(_fireReminder);
   final ReminderNotifier _notifier = ReminderNotifier();
 
   /// 검색 팔레트(메인 창)를 열 때마다 틱. 팔레트가 듣고 초기화+포커스.
@@ -102,7 +110,7 @@ class MainController extends ChangeNotifier {
     await const WindowMethodChannel(
       kMainChannel,
       mode: ChannelMode.unidirectional,
-    ).setMethodCallHandler(_onCall);
+    ).setMethodCallHandler(handleWindowCall);
 
     _models.addListener(_pushModelState);
     await _models.initialize();
@@ -314,7 +322,8 @@ class MainController extends ChangeNotifier {
     _pushOverview();
   }
 
-  Future<dynamic> _onCall(MethodCall call) async {
+  /// Entry point shared by the native channel and controller integration tests.
+  Future<dynamic> handleWindowCall(MethodCall call) async {
     switch (call.method) {
       case ToMain.updateSticky:
         final s = Sticky.fromJson(
@@ -543,13 +552,13 @@ class MainController extends ChangeNotifier {
         }
       case ToMain.clearReminder:
         final id = call.arguments as String;
-        _reminders.cancel(id);
         final i = stickies.indexWhere((e) => e.id == id);
         if (i != -1) {
           await _noteSaves.update(
             id,
             (note) => note.copyWith(clearRemind: true),
           );
+          _reminders.cancel(id);
           notifyListeners();
           _pushOverview();
         }
@@ -735,6 +744,7 @@ class MainController extends ChangeNotifier {
       final decision = decideMarkdownImport(
         hasOrigin: origin != null,
         hasSticky: existing != null,
+        isBeingEdited: existing?.open == true,
         sourceUnchanged: origin?.sourceHash == note.sourceHash,
         stickyUnchangedSinceImport:
             origin != null &&
@@ -783,8 +793,9 @@ class MainController extends ChangeNotifier {
         }
       }
       bySourcePath[note.sourcePath] = sticky.id;
-      if (note.metadata.noteezGroupId != null ||
-          note.metadata.noteezGroupName != null) {
+      if (decision != MarkdownImportDecision.skip &&
+          (note.metadata.noteezGroupId != null ||
+              note.metadata.noteezGroupName != null)) {
         importedGroups[sticky.id] = (
           groupId: note.metadata.noteezGroupId,
           groupName: note.metadata.noteezGroupName,
@@ -861,7 +872,7 @@ class MainController extends ChangeNotifier {
     if (changed.isNotEmpty || linked > 0 || groupsChanged) {
       notifyListeners();
       _pushOverview();
-      unawaited(_conn.warmup(changed).then((_) => _pushOverview()));
+      _beginReindex();
     }
     final result = (
       imported: imported,
@@ -971,11 +982,12 @@ class MainController extends ChangeNotifier {
     for (final wc in List<WindowController>.of(_windows.values)) {
       await wc.invokeMethod(ToWindow.flushPendingWrites);
     }
+    await _noteSaves.flush();
   }
 
   Future<void> shutdown() async {
     await flushPendingWrites();
-    await _noteSaves.flush();
+    _reminders.dispose();
     await _conn.close();
     await _db.close();
   }
@@ -1081,9 +1093,13 @@ class MainController extends ChangeNotifier {
     await _db.upsert(s);
     stickies.add(s);
     _queueIndex(s);
-    // 캡처한 노트는 화면에 나타나게(보이는 게 안 보이는 것보다 낫다).
-    await _spawn(s);
     notifyListeners();
+    _pushOverview();
+    try {
+      await _spawn(s);
+    } catch (_) {
+      throw SavedNoteOpenFailure(s.id);
+    }
   }
 
   /// 전체 보기 데이터(메모+연결). 열 때와 갱신 push 에 공용.
@@ -1346,7 +1362,19 @@ class MainController extends ChangeNotifier {
     );
   }
 
-  Future<void> _spawn(Sticky s, {bool focusOnOpen = false}) async {
+  Future<void> _spawn(Sticky s, {bool focusOnOpen = false}) {
+    final pending = _spawning[s.id];
+    if (pending != null) return pending;
+    if (_windows.containsKey(s.id)) return Future.value();
+    final operation = _createStickyWindow(s, focusOnOpen: focusOnOpen);
+    _spawning[s.id] = operation;
+    return operation.whenComplete(() => _spawning.remove(s.id));
+  }
+
+  Future<void> _createStickyWindow(
+    Sticky s, {
+    required bool focusOnOpen,
+  }) async {
     final args = focusOnOpen
         ? jsonEncode({...s.toJson(), 'focusOnOpen': true})
         : jsonEncode(s.toJson());
