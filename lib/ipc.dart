@@ -20,6 +20,8 @@ abstract final class ToMain {
   static const String permanentlyDeleteTrashed = 'permanentlyDeleteTrashed';
   static const String newSticky = 'newSticky';
   static const String openOrganization = 'openOrganization';
+  static const String getOverviewData = 'getOverviewData';
+  static const String retryRecommendations = 'retryRecommendations';
   static const String getOrganization = 'getOrganization';
   static const String undoGroupChange = 'undoGroupChange';
   static const String getConnection = 'getConnection';
@@ -262,6 +264,14 @@ class MainChannel {
 
   Future<void> openOrganization(String id) =>
       _ch.invokeMethod(ToMain.openOrganization, id);
+
+  Future<Map<String, dynamic>?> getOverviewData() async {
+    final value = await _ch.invokeMethod(ToMain.getOverviewData);
+    return value is String ? jsonDecode(value) as Map<String, dynamic> : null;
+  }
+
+  Future<void> retryRecommendations() =>
+      _ch.invokeMethod(ToMain.retryRecommendations);
 
   Future<Map<String, dynamic>> getOrganization() async =>
       jsonDecode(await _ch.invokeMethod(ToMain.getOrganization) as String)

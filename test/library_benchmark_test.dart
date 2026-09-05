@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:async';
+import 'package:noteez/services/recommendation_service.dart';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:noteez/connection_engine.dart';
@@ -52,6 +54,28 @@ void main() {
         watch.reset();
         final groups = engine.suggestedClusters(notes);
         final groupsMs = watch.elapsedMilliseconds;
+        final worker = RecommendationWorker();
+        final snapshot = RecommendationInput(
+          notes: notes,
+          vectors: engine.recommendationVectors,
+          modelId: engine.modelId,
+        );
+        var beats = 0, maxGap = 0, previous = 0;
+        final backgroundWatch = Stopwatch()..start();
+        final heartbeat = Timer.periodic(const Duration(milliseconds: 5), (_) {
+          final elapsed = backgroundWatch.elapsedMilliseconds;
+          final gap = elapsed - previous;
+          if (gap > maxGap) maxGap = gap;
+          previous = elapsed;
+          beats++;
+        });
+        try {
+          await worker.run(snapshot);
+        } finally {
+          heartbeat.cancel();
+          worker.close();
+        }
+        final workerMs = backgroundWatch.elapsedMilliseconds;
         // Structured output can be compared across revisions on the same machine.
         // ignore: avoid_print
         print(
@@ -59,6 +83,9 @@ void main() {
             'notes': count,
             'referencesMs': referencesMs,
             'groupsMs': groupsMs,
+            'workerMs': workerMs,
+            'mainHeartbeatCount': beats,
+            'maxHeartbeatGapMs': maxGap,
             'referenceCount': refs.length,
             'groupCount': groups.length,
           }),

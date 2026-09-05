@@ -23,6 +23,8 @@ class OverviewWindowApp extends StatelessWidget {
   final List<Map<String, dynamic>> referenceSuggestions;
   final String? notice;
   final bool modelReady;
+  final bool recommendationsBusy;
+  final String? recommendationError;
   final int modelIndexed;
   final int modelIndexTotal;
   final String? fontFamily;
@@ -35,6 +37,8 @@ class OverviewWindowApp extends StatelessWidget {
     this.referenceSuggestions = const [],
     this.notice,
     this.modelReady = true,
+    this.recommendationsBusy = false,
+    this.recommendationError,
     this.modelIndexed = 0,
     this.modelIndexTotal = 0,
     this.fontFamily,
@@ -54,6 +58,8 @@ class OverviewWindowApp extends StatelessWidget {
         referenceSuggestions: referenceSuggestions,
         notice: notice,
         modelReady: modelReady,
+        recommendationsBusy: recommendationsBusy,
+        recommendationError: recommendationError,
         modelIndexed: modelIndexed,
         modelIndexTotal: modelIndexTotal,
       ),
@@ -73,6 +79,8 @@ class OverviewWindow extends StatefulWidget {
   final List<Map<String, dynamic>> referenceSuggestions;
   final String? notice;
   final bool modelReady;
+  final bool recommendationsBusy;
+  final String? recommendationError;
   final int modelIndexed;
   final int modelIndexTotal;
   const OverviewWindow({
@@ -84,6 +92,8 @@ class OverviewWindow extends StatefulWidget {
     this.referenceSuggestions = const [],
     this.notice,
     this.modelReady = true,
+    this.recommendationsBusy = false,
+    this.recommendationError,
     this.modelIndexed = 0,
     this.modelIndexTotal = 0,
   });
@@ -98,6 +108,7 @@ class _OverviewWindowState extends State<OverviewWindow> {
 
   final DateTime _now = DateTime.now();
   String _filter = '';
+  int _lastRevision = 0;
   _Status _status = _Status.all;
   _Sort _sort = _Sort.recent;
 
@@ -107,6 +118,8 @@ class _OverviewWindowState extends State<OverviewWindow> {
   late List<Map<String, dynamic>> _groups = widget.groups;
   late String? _notice = widget.notice;
   late bool _modelReady = widget.modelReady;
+  late bool _recommendationsBusy = widget.recommendationsBusy;
+  late String? _recommendationError = widget.recommendationError;
   late int _modelIndexed = widget.modelIndexed;
   late int _modelIndexTotal = widget.modelIndexTotal;
   bool _relations = false;
@@ -119,30 +132,45 @@ class _OverviewWindowState extends State<OverviewWindow> {
   @override
   void initState() {
     super.initState();
-    WindowController.fromCurrentEngine().then((c) {
-      c.setWindowMethodHandler((call) async {
+    WindowController.fromCurrentEngine().then((c) async {
+      await c.setWindowMethodHandler((call) async {
         if (call.method == ToWindow.refresh && mounted) {
-          final m =
-              jsonDecode(call.arguments as String) as Map<String, dynamic>;
-          setState(() {
-            _notes = (m['notes'] as List).cast<Map<String, dynamic>>();
-            _edges = ((m['edges'] as List?) ?? const [])
-                .cast<Map<String, dynamic>>();
-            _referenceSuggestions =
-                ((m['referenceSuggestions'] as List?) ?? const [])
-                    .cast<Map<String, dynamic>>();
-            _suggestedGroups = ((m['suggestedGroups'] as List?) ?? const [])
-                .cast<Map<String, dynamic>>();
-            _groups = ((m['groups'] as List?) ?? const [])
-                .cast<Map<String, dynamic>>();
-            if (m['notice'] is String) _notice = m['notice'] as String;
-            _modelReady = m['modelReady'] as bool? ?? _modelReady;
-            _modelIndexed = m['modelIndexed'] as int? ?? _modelIndexed;
-            _modelIndexTotal = m['modelIndexTotal'] as int? ?? _modelIndexTotal;
-          });
+          _applyOverview(
+            jsonDecode(call.arguments as String) as Map<String, dynamic>,
+          );
         }
         return null;
       });
+      // Fetch after installing the handler: a fast worker can finish while this
+      // engine is still launching, before it can receive refresh pushes.
+      try {
+        final latest = await _main.getOverviewData();
+        if (mounted && latest != null) _applyOverview(latest);
+      } catch (_) {
+        /* Initial snapshot remains usable; future pushes retry. */
+      }
+    });
+  }
+
+  void _applyOverview(Map<String, dynamic> m) {
+    final revision = m['revision'] as int?;
+    if (revision != null && revision < _lastRevision) return;
+    if (revision != null) _lastRevision = revision;
+    setState(() {
+      _notes = (m['notes'] as List).cast<Map<String, dynamic>>();
+      _edges = ((m['edges'] as List?) ?? const []).cast<Map<String, dynamic>>();
+      _referenceSuggestions = ((m['referenceSuggestions'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>();
+      _suggestedGroups = ((m['suggestedGroups'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>();
+      _groups = ((m['groups'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>();
+      if (m['notice'] is String) _notice = m['notice'] as String;
+      _modelReady = m['modelReady'] as bool? ?? _modelReady;
+      _modelIndexed = m['modelIndexed'] as int? ?? _modelIndexed;
+      _modelIndexTotal = m['modelIndexTotal'] as int? ?? _modelIndexTotal;
+      _recommendationsBusy = m['recommendationsBusy'] == true;
+      _recommendationError = m['recommendationError'] as String?;
     });
   }
 
@@ -330,6 +358,44 @@ class _OverviewWindowState extends State<OverviewWindow> {
             _controls(),
             if (!_modelReady || _modelIndexed < _modelIndexTotal)
               _modelBanner(),
+            if (_recommendationsBusy || _recommendationError != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    if (_recommendationsBusy) ...[
+                      const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 1.5),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: Text(
+                        _recommendationError ??
+                            '관련 메모를 찾고 있어요. 메모는 바로 정리할 수 있어요.',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ),
+                    if (_recommendationError != null)
+                      TextButton(
+                        onPressed: () async {
+                          try {
+                            await _main.retryRecommendations();
+                          } catch (_) {}
+                        },
+                        child: const Text('다시 시도'),
+                      ),
+                  ],
+                ),
+              ),
             if (_notice != null) _noticeBanner(),
             const Divider(height: 1, color: AppColors.hair),
             Expanded(

@@ -165,6 +165,8 @@ Future<void> main(List<String> args) async {
         groups: groups,
         notice: notice,
         modelReady: modelReady,
+        recommendationsBusy: m['recommendationsBusy'] == true,
+        recommendationError: m['recommendationError'] as String?,
         modelIndexed: modelIndexed,
         modelIndexTotal: modelIndexTotal,
       ),

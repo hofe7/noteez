@@ -1,3 +1,4 @@
+import 'services/recommendation_service.dart';
 import 'services/link_service.dart';
 import 'models/link_change.dart';
 import 'services/note_save_service.dart';
@@ -35,9 +36,13 @@ class MainController extends ChangeNotifier {
     AppDatabase? database,
     ReminderScheduler? reminders,
     Future<void> Function(Sticky)? deliverReminder,
+    Future<Map<String, dynamic>> Function(RecommendationInput)? recommend,
   }) : _db = database ?? AppDatabase(),
        _injectedReminders = reminders,
-       _deliverReminderOverride = deliverReminder;
+       _deliverReminderOverride = deliverReminder,
+       _recommendationComputeOverride = recommend;
+  final Future<Map<String, dynamic>> Function(RecommendationInput)?
+  _recommendationComputeOverride;
   final ReminderScheduler? _injectedReminders;
   final Future<void> Function(Sticky)? _deliverReminderOverride;
   final Map<String, int> _reminderRevisions = {};
@@ -66,6 +71,14 @@ class MainController extends ChangeNotifier {
   final List<Sticky> stickies = [];
   final Map<String, WindowController> _windows = {};
   final Map<String, Future<void>> _spawning = {};
+  late final _recommendations = RecommendationService(
+    onChanged: _sendOverview,
+    compute: _recommendationComputeOverride,
+  );
+  final _recommendationNoteKeys =
+      <String, ({List<Block> blocks, String hash})>{};
+  bool _overviewReady = false;
+  int _overviewRevision = 0;
   WindowController? _overviewWin; // 전체 보기 창(열려 있으면 변경을 push)
   WindowController? _modelWin;
   WindowController? _backupWin;
@@ -450,6 +463,13 @@ class MainController extends ChangeNotifier {
           ),
         );
         await window.show();
+      case ToMain.getOverviewData:
+        _overviewReady = true;
+        _scheduleRecommendations();
+        return jsonEncode(_overviewData());
+      case ToMain.retryRecommendations:
+        _recommendations.retry();
+        _pushOverview();
       case ToMain.getOrganization:
         return jsonEncode({
           'notes': [
@@ -936,6 +956,7 @@ class MainController extends ChangeNotifier {
     if (_closing) return;
     await flushPendingWrites();
     _closing = true;
+    _recommendations.close();
     _reminders.dispose();
     await _links.flush();
     await _conn.close();
@@ -1052,6 +1073,61 @@ class MainController extends ChangeNotifier {
     }
   }
 
+  void _scheduleRecommendations() {
+    final live = stickies.map((n) => n.id).toSet();
+    _recommendationNoteKeys.removeWhere((id, _) => !live.contains(id));
+    final noteKeys = [
+      for (final note in stickies)
+        (() {
+          final previous = _recommendationNoteKeys[note.id];
+          final hash =
+              previous != null && identical(previous.blocks, note.blocks)
+              ? previous.hash
+              : _conn.documentHash(note);
+          _recommendationNoteKeys[note.id] = (blocks: note.blocks, hash: hash);
+          return [note.id, hash, note.contentUpdatedAt.millisecondsSinceEpoch];
+        })(),
+    ];
+    final groups = {
+      for (final group in _noteGroups)
+        group.id: [
+          for (final member in _groupMembers.values)
+            if (member.groupId == group.id) member.stickyId,
+        ],
+    };
+    final links = {
+      for (final edge in _graph.uniqueEdges())
+        recommendationPair(edge.a, edge.b),
+    };
+    final dismissals = {
+      for (final d in _dismissals.values)
+        if (_isSuggestionDismissed(d.aId, d.bId))
+          recommendationPair(d.aId, d.bId),
+    };
+    final signature = jsonEncode([
+      noteKeys,
+      _conn.modelId,
+      _conn.recommendationVersion,
+      groups,
+      links.toList(),
+      dismissals.toList(),
+      _groupSuggestionDismissals.toList(),
+    ]);
+    // Large vector copies are deferred until the debounced job actually starts.
+    _recommendations.update(
+      signature,
+      () => RecommendationInput(
+        notes: List<Sticky>.of(stickies),
+        vectors: _conn.recommendationVectors,
+        modelId: _conn.modelId,
+        groups: groups,
+        links: links,
+        dismissedPairs: dismissals,
+        dismissedAdditions: Set.of(_groupSuggestionDismissals),
+      ),
+    );
+  }
+
   /// 전체 보기 데이터(메모+연결). 열 때와 갱신 push 에 공용.
   Map<String, dynamic> _overviewData() {
     final notes = [
@@ -1075,19 +1151,8 @@ class MainController extends ChangeNotifier {
     for (final members in memberships.values) {
       members.sort((a, b) => a.position.compareTo(b.position));
     }
-    final additions = _conn.groupSuggestions(
-      stickies,
-      {
-        for (final group in _noteGroups)
-          group.id: [
-            for (final member in memberships[group.id] ?? <GroupMemberRow>[])
-              member.stickyId,
-          ],
-      },
-      isDismissed: (note, group) =>
-          _groupSuggestionDismissals.contains(_groupDismissalKey(note, group)),
-      isPairDismissed: _isSuggestionDismissed,
-    );
+    final recommendations = _recommendations.result;
+    final additions = recommendations?['additions'] as Map? ?? const {};
     final groups = [
       for (final group in _noteGroups)
         {
@@ -1095,10 +1160,7 @@ class MainController extends ChangeNotifier {
           'name': group.name,
           'position': group.position,
           'collapsed': group.collapsed,
-          'suggestions': [
-            for (final addition in additions)
-              if (addition.groupId == group.id) addition.toJson(),
-          ],
+          'suggestions': additions[group.id] ?? const [],
           'memberIds': [
             for (final member
                 in memberships[group.id] ?? const <GroupMemberRow>[])
@@ -1106,36 +1168,16 @@ class MainController extends ChangeNotifier {
           ],
         },
     ];
-    // 사용자가 확정한 묶음은 추천에서 제외한다. 추천은 표현용 계산 결과일 뿐
-    // DB/LinkGraph를 바꾸지 않으며 다음 임베딩 갱신 때 다시 계산된다.
-    // Reference links do not assign notes to a group or exclude group suggestions.
-    final confirmedIds = _groupMembers.keys.toSet();
-    final suggestedGroups = [
-      for (final c in _conn.suggestedClusters(
-        stickies,
-        exclude: confirmedIds,
-        isDismissed: _isSuggestionDismissed,
-      ))
-        {
-          'ids': c.ids,
-          'score': c.score,
-          'reasons': c.reasons,
-          if (c.title != null) 'title': c.title,
-        },
-    ];
     return {
       'notes': notes,
       'edges': edges,
-      'referenceSuggestions': _conn.referenceSuggestions(
-        stickies,
-        isLinked: (a, b) => _graph.neighbors(a).contains(b),
-        isDismissed: _isSuggestionDismissed,
-        memberships: {
-          for (final m in _groupMembers.values) m.stickyId: m.groupId,
-        },
-      ),
+      'referenceSuggestions':
+          recommendations?['referenceSuggestions'] ?? const [],
       'groups': groups,
-      'suggestedGroups': suggestedGroups,
+      'suggestedGroups': recommendations?['suggestedGroups'] ?? const [],
+      'revision': ++_overviewRevision,
+      'recommendationsBusy': _recommendations.busy,
+      'recommendationError': _recommendations.error,
       'modelReady': hasSelectedModel,
       'modelIndexed': _indexedNotes,
       'modelIndexTotal': _indexTotal,
@@ -1145,6 +1187,7 @@ class MainController extends ChangeNotifier {
 
   /// 전체 보기 창: 모든 메모(열림+서랍)를 묶음 + 그 외로 정리해 한눈에.
   Future<void> openOverview() async {
+    _scheduleRecommendations();
     final existing = _overviewWin;
     if (existing != null) {
       try {
@@ -1158,6 +1201,7 @@ class MainController extends ChangeNotifier {
         _overviewWin = null;
       }
     }
+    _overviewReady = false;
     final wc = await WindowController.create(
       WindowConfiguration(
         hiddenAtLaunch: true,
@@ -1165,6 +1209,7 @@ class MainController extends ChangeNotifier {
       ),
     );
     _overviewWin = wc;
+    _sendOverview();
   }
 
   Map<String, dynamic> _modelState() =>
@@ -1291,12 +1336,21 @@ class MainController extends ChangeNotifier {
 
   /// 상태 변화 시 열려있는 전체 보기 창에 최신 데이터 push (껐다 켤 필요 없게).
   void _pushOverview() {
+    if (_overviewWin == null || _closing) return;
+    _scheduleRecommendations();
+    _sendOverview();
+  }
+
+  void _sendOverview() {
     final wc = _overviewWin;
-    if (wc == null) return;
+    if (wc == null || !_overviewReady || _closing) return;
     wc.invokeMethod(ToWindow.refresh, jsonEncode(_overviewData())).catchError((
       _,
     ) {
-      _overviewWin = null; // 창이 닫혔으면 추적 해제
+      if (_overviewWin == wc) {
+        _overviewWin = null;
+        _overviewReady = false;
+      }
       return null;
     });
   }

@@ -53,6 +53,7 @@ class AutomaticClusterEngine {
     Iterable<String> sourceIds,
     HybridRelevanceResult Function(String, String) relevance, {
     String? modelId,
+    double? Function(String, String)? semanticSimilarity,
     bool Function(String, String)? isDismissed,
     int maxSize = 6,
   }) {
@@ -63,7 +64,9 @@ class AutomaticClusterEngine {
     final calibration = ClusterCalibration.forModel(modelId);
     double semantic(String a, String b) {
       if (isDismissed?.call(a, b) ?? false) return -1;
-      final score = relevance(a, b).semanticScore;
+      final score = semanticSimilarity != null
+          ? semanticSimilarity(a, b)
+          : relevance(a, b).semanticScore;
       return score != null && score.isFinite ? score : -1;
     }
 
@@ -136,6 +139,9 @@ class AutomaticClusterEngine {
       ids.where((id) => !assigned.contains(id)),
       (a, b) {
         if (isDismissed?.call(a, b) ?? false) return -1;
+        if (semanticSimilarity != null && semanticSimilarity(a, b) != null) {
+          return -1;
+        }
         final result = relevance(a, b);
         return result.semanticScore == null ? result.score : -1;
       },

@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'embed/embedding_worker.dart';
 import 'embed/document_embedding.dart';
@@ -56,9 +58,67 @@ class ConnectionEngine {
   final Map<String, int> _vectorVersions = {};
   final Map<(String, String, String, String, int, int), HybridRelevanceResult>
   _pairCache = {};
+  final _pairOrder = Queue<(String, String, String, String, int, int)>();
   static const _maximumCachedPairs = 50000;
+  int _recommendationVersion = 0;
+  int get recommendationVersion => _recommendationVersion;
+  int _semanticVersion = -1;
+  final Map<String, int> _semanticIndices = {};
+  Float64List? _semanticCache;
+
+  /// Compact symmetric score cache, bounded to 16 MB. Explanations remain in
+  /// the smaller hybrid cache; clustering never builds them just to read cosine.
+  void _prepareSemantic(List<Sticky> notes) {
+    if (_semanticVersion == _recommendationVersion &&
+        _semanticIndices.length == notes.length &&
+        notes.every((n) => _semanticIndices.containsKey(n.id))) {
+      return;
+    }
+    _semanticIndices
+      ..clear()
+      ..addEntries([
+        for (var i = 0; i < notes.length; i++) MapEntry(notes[i].id, i),
+      ]);
+    final pairs = notes.length * (notes.length - 1) ~/ 2;
+    _semanticCache = pairs <= 2000000
+        ? (Float64List(pairs)..fillRange(0, pairs, double.nan))
+        : null;
+    _semanticVersion = _recommendationVersion;
+  }
+
+  double? _semanticScore(String a, String b) {
+    final av = _vectors[a], bv = _vectors[b];
+    if (av == null || bv == null) return null;
+    final ai = _semanticIndices[a], bi = _semanticIndices[b];
+    final cache = _semanticCache;
+    if (cache == null || ai == null || bi == null || ai == bi) {
+      return _cos(av, bv);
+    }
+    final high = max(ai, bi), low = min(ai, bi);
+    final offset = high * (high - 1) ~/ 2 + low;
+    final value = cache[offset];
+    if (!value.isNaN) return value;
+    return cache[offset] = _cos(av, bv);
+  }
+
+  /// Send only owned, serializable data to the recommendation isolate.
+  Map<String, List<double>> get recommendationVectors => {
+    for (final entry in _vectors.entries)
+      entry.key: List<double>.of(entry.value),
+  };
+  String? _snapshotModelId;
+  factory ConnectionEngine.forRecommendations(
+    String? modelId,
+    Map<String, List<double>> vectors,
+  ) {
+    final engine = ConnectionEngine();
+    engine._snapshotModelId = modelId;
+    engine._vectors.addAll(vectors);
+    return engine;
+  }
 
   void _prepare(List<Sticky> all) {
+    _prepareSemantic(all);
     final live = <String>{};
     for (final note in all) {
       live.add(note.id);
@@ -74,7 +134,7 @@ class ConnectionEngine {
     _features.removeWhere((id, _) => !live.contains(id));
   }
 
-  HybridRelevanceResult _relevance(String a, String b) {
+  HybridRelevanceResult _relevance(String a, String b, {bool cache = true}) {
     if (a.compareTo(b) > 0) {
       (a, b) = (b, a);
     }
@@ -88,26 +148,25 @@ class ConnectionEngine {
       _vectorVersions[a] ?? 0,
       _vectorVersions[b] ?? 0,
     );
-    final cached = _pairCache.remove(key);
-    if (cached != null) {
-      _pairCache[key] = cached;
-      return cached;
-    }
-    final av = _vectors[a];
-    final bv = _vectors[b];
+    final cached = cache ? _pairCache[key] : null;
+    if (cached != null) return cached;
     final result = HybridRelevance.evaluatePrepared(
       fa.memo,
       fb.memo,
-      semanticScore: av != null && bv != null ? _cos(av, bv) : null,
+      semanticScore: _semanticScore(a, b),
     );
-    if (_pairCache.length >= _maximumCachedPairs) {
-      _pairCache.remove(_pairCache.keys.first);
+    if (cache) {
+      if (_pairCache.length >= _maximumCachedPairs) {
+        _pairCache.remove(_pairOrder.removeFirst());
+      }
+      _pairCache[key] = result;
+      _pairOrder.addLast(key);
     }
-    _pairCache[key] = result;
     return result;
   }
 
   void _vectorChanged(String id) {
+    _recommendationVersion++;
     _vectorVersions[id] = (_vectorVersions[id] ?? 0) + 1;
   }
 
@@ -119,7 +178,7 @@ class ConnectionEngine {
   Future<void> Function(String id, String hash, String vec)? onPersist;
 
   bool get ready => _ready;
-  String? get modelId => _model?.profile.id;
+  String? get modelId => _model?.profile.id ?? _snapshotModelId;
 
   /// 설치/선택된 모델을 교체한다. 서로 다른 모델의 벡터는 비교할 수 없으므로
   /// 메모리 캐시도 함께 비우고 다음 warmup에서 다시 만든다.
@@ -137,8 +196,12 @@ class ConnectionEngine {
   }
 
   void clearEmbeddings() {
+    _recommendationVersion++;
+    _semanticCache = null;
+    _semanticVersion = -1;
     _generation++;
     _pairCache.clear();
+    _pairOrder.clear();
     _vectorVersions.clear();
     _vectors.clear();
     _documents.clear();
@@ -221,7 +284,7 @@ class ConnectionEngine {
     final hash = embeddingHash(s);
     // Never recommend from a vector that describes an older document.
     if (_hashes[s.id] != hash) {
-      _vectorChanged(s.id);
+      if (_vectors.containsKey(s.id)) _vectorChanged(s.id);
       _vectors.remove(s.id);
       _hashes.remove(s.id);
     }
@@ -407,21 +470,56 @@ class ConnectionEngine {
     Map<String, String> memberships = const {},
   }) {
     _prepare(all);
+    final best = <String, ({Sticky note, HybridRelevanceResult result})>{};
+    final runnersUp = <String, double>{};
+    void consider(
+      Sticky source,
+      Sticky candidate,
+      HybridRelevanceResult result,
+    ) {
+      if (!result.score.isFinite) return;
+      final current = best[source.id];
+      if (current == null || result.score > current.result.score) {
+        runnersUp[source.id] = current?.result.score ?? -2;
+        best[source.id] = (note: candidate, result: result);
+      } else if (result.score > (runnersUp[source.id] ?? -2)) {
+        runnersUp[source.id] = result.score;
+      }
+    }
+
+    bool allowed(String a, String b) =>
+        !isLinked(a, b) &&
+        !(isDismissed?.call(a, b) ?? false) &&
+        (memberships[a] == null || memberships[a] != memberships[b]);
+    // Each unordered pair is evaluated once, preserving original candidate order
+    // and therefore the same tie-breaking and runner-up margins.
+    for (var i = 0; i < all.length; i++) {
+      for (var j = i + 1; j < all.length; j++) {
+        final a = all[i], b = all[j];
+        final ab = allowed(a.id, b.id), ba = allowed(b.id, a.id);
+        if (!ab && !ba) continue;
+        final result = _relevance(a.id, b.id, cache: false);
+        if (ab) consider(a, b, result);
+        if (ba) consider(b, a, result);
+      }
+    }
     final pairs = <String, Map<String, dynamic>>{};
     for (final note in all) {
-      final group = memberships[note.id];
-      final suggestion = _connectionForPrepared(
-        note.id,
-        all,
-        exclude: {
-          for (final other in all)
-            if (isLinked(note.id, other.id) ||
-                (group != null && memberships[other.id] == group))
-              other.id,
-        },
-        isDismissed: isDismissed,
+      final winner = best[note.id];
+      if (winner == null) continue;
+      final score = winner.result.score;
+      if (score < HybridRelevance.suggestionThreshold ||
+          (score - (runnersUp[note.id] ?? -2) < 0.04 &&
+              score < HybridRelevance.strongThreshold)) {
+        continue;
+      }
+      final suggestion = Connection(
+        winner.note.id,
+        winner.note.preview,
+        '',
+        score,
+        reasons: winner.result.reasons,
       );
-      if (suggestion == null) continue;
       final ids = [note.id, suggestion.id]..sort();
       final key = jsonEncode(ids);
       if ((pairs[key]?['score'] as double? ?? -1) >= suggestion.score) continue;
@@ -463,6 +561,7 @@ class ConnectionEngine {
       ids,
       relevance,
       modelId: modelId,
+      semanticSimilarity: (a, b) => _semanticScore(a, b),
       isDismissed: isDismissed,
     );
     return [
